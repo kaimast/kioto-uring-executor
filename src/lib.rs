@@ -9,6 +9,10 @@ use rand::Rng;
 
 use tokio::sync::mpsc;
 
+use std::sync::mpsc as std_mpsc;
+
+pub use executor_macros::test;
+
 pub struct Task {
     future: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
@@ -24,7 +28,12 @@ pub fn get_num_threads() -> usize {
     unsafe { TASK_SENDERS.len() }
 }
 
-pub fn initialize(num_os_threads: NonZeroUsize) {
+pub fn initialize() {
+    let thread_count = std::thread::available_parallelism().unwrap();
+    initialize_with_threads(thread_count)
+}
+
+pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
     let num_os_threads = num_os_threads.get().max(MIN_EXECUTOR_THREADS);
 
     log::info!("Initialized tokio runtime {num_os_threads} worker thread(s)");
@@ -47,6 +56,18 @@ pub fn initialize(num_os_threads: NonZeroUsize) {
     unsafe {
         TASK_SENDERS = task_senders;
     }
+}
+
+/// Emulates tokio's block_on call
+pub fn block_on<F: Future<Output = ()> + Send + 'static>(task: F) {
+    let (sender, receiver) = std_mpsc::channel();
+
+    spawn(async move {
+        task.await;
+        sender.send(()).expect("Notification failed");
+    });
+
+    receiver.recv().expect("Failed to wait for task");
 }
 
 /// Spawns the task on a random thread
