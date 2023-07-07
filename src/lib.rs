@@ -70,6 +70,24 @@ pub fn block_on<F: Future<Output = ()> + Send + 'static>(task: F) {
     receiver.recv().expect("Failed to wait for task");
 }
 
+/// Emulates tokio's block_on call
+///
+/// # Safety
+/// Make sure task is Send before polled for the first time
+/// (Can be not Send afterwards)
+
+pub unsafe fn unsafe_block_on<F: Future<Output = ()> + 'static>(task: F) {
+    let (sender, receiver) = std_mpsc::channel();
+
+    unsafe_spawn(async move {
+        task.await;
+        sender.send(()).expect("Notification failed");
+    });
+
+    receiver.recv().expect("Failed to wait for task");
+}
+
+
 /// Spawns the task on a random thread
 pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) {
     let task = Task {
