@@ -5,7 +5,7 @@ authors = ["Kai Mast <kaimast@cs.cornell.edu>"]
 edition = "2021"
 
 [dependencies]
-tokio-uring = { git="https://github.com/kaimast/tokio-uring.git", branch="master" }
+tokio-uring = { git="https://github.com/kaimast/tokio-uring.git" }
 tokio = { version="1", default-features=false, features=["sync"] }
 log = "0.4"
 rand = "0.8"
