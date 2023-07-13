@@ -36,7 +36,7 @@ pub fn initialize() {
 pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
     let num_os_threads = num_os_threads.get().max(MIN_EXECUTOR_THREADS);
 
-    log::info!("Initialized tokio runtime {num_os_threads} worker thread(s)");
+    log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
 
     let mut task_senders = Vec::with_capacity(num_os_threads);
 
@@ -76,10 +76,10 @@ pub fn block_on<F: Future<Output = ()> + Send + 'static>(task: F) {
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
 
-pub unsafe fn unsafe_block_on<F: Future<Output = ()> + Send + 'static>(task: F) {
+pub unsafe fn unsafe_block_on<F: Future<Output = ()> + 'static>(task: F) {
     let (sender, receiver) = std_mpsc::channel();
 
-    spawn(async move {
+    unsafe_spawn(async move {
         task.await;
         sender.send(()).expect("Notification failed");
     });
@@ -101,8 +101,8 @@ pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) {
     };
 
     let idx = rand::thread_rng().gen_range(0..task_senders.len());
-    if task_senders[idx].send(task).is_err() {
-        panic!("Failed to spawn task");
+    if let Err(err) = task_senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -120,8 +120,8 @@ pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(offset: usize, task: F)
     };
 
     let idx = offset % task_senders.len();
-    if task_senders[idx].send(task).is_err() {
-        panic!("Failed to spawn task");
+    if let Err(err) = task_senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -142,8 +142,8 @@ pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(offset: usize, t
     };
 
     let idx = offset % task_senders.len();
-    if task_senders[idx].send(task).is_err() {
-        panic!("Failed to spawn task");
+    if let Err(err) = task_senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -164,7 +164,7 @@ pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
     };
 
     let idx = rand::thread_rng().gen_range(0..task_senders.len());
-    if task_senders[idx].send(task).is_err() {
-        panic!("Failed to spawn task");
+    if let Err(err) = task_senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
