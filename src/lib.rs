@@ -24,6 +24,34 @@ pub type TaskSender = mpsc::UnboundedSender<Task>;
 const MIN_EXECUTOR_THREADS: usize = 8;
 static mut TASK_SENDERS: Vec<TaskSender> = vec![];
 
+pub struct SpawnPos {
+    thread_idx: usize,
+}
+
+impl Default for SpawnPos {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SpawnPos {
+    pub fn new() -> Self {
+        Self { thread_idx: 0 }
+    }
+
+    pub fn get(&self) -> usize {
+        self.thread_idx
+    }
+
+    pub fn advance(&mut self) {
+        let num_os_threads = std::thread::available_parallelism()
+            .unwrap()
+            .get()
+            .max(MIN_EXECUTOR_THREADS);
+        self.thread_idx = (self.thread_idx + 1) % num_os_threads;
+    }
+}
+
 pub fn get_num_threads() -> usize {
     unsafe { TASK_SENDERS.len() }
 }
