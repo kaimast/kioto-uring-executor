@@ -121,16 +121,15 @@ pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) {
         future: Box::pin(task),
     };
 
-    let task_senders = unsafe {
+    unsafe {
         if TASK_SENDERS.is_empty() {
             panic!("Executor not set up yet!");
         }
-        &TASK_SENDERS
-    };
 
-    let idx = rand::thread_rng().gen_range(0..task_senders.len());
-    if let Err(err) = task_senders[idx].send(task) {
-        panic!("Failed to spawn task: {err}");
+        let idx = rand::thread_rng().gen_range(0..TASK_SENDERS.len());
+        if let Err(err) = TASK_SENDERS[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
     }
 }
 
@@ -140,16 +139,15 @@ pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(offset: usize, task: F)
         future: Box::pin(task),
     };
 
-    let task_senders = unsafe {
+    unsafe {
         if TASK_SENDERS.is_empty() {
             panic!("Executor not set up yet!");
         }
-        &TASK_SENDERS
-    };
 
-    let idx = offset % task_senders.len();
-    if let Err(err) = task_senders[idx].send(task) {
-        panic!("Failed to spawn task: {err}");
+        let idx = offset % TASK_SENDERS.len();
+        if let Err(err) = TASK_SENDERS[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
     }
 }
 
@@ -162,16 +160,15 @@ pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(offset: usize, t
         future: Box::pin(task),
     };
 
-    let task_senders = unsafe {
+    unsafe {
         if TASK_SENDERS.is_empty() {
             panic!("Executor not set up yet!");
         }
-        &TASK_SENDERS
-    };
 
-    let idx = offset % task_senders.len();
-    if let Err(err) = task_senders[idx].send(task) {
-        panic!("Failed to spawn task: {err}");
+        let idx = offset % TASK_SENDERS.len();
+        if let Err(err) = TASK_SENDERS[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
     }
 }
 
@@ -184,15 +181,14 @@ pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
         future: Box::pin(task),
     };
 
-    let task_senders = unsafe {
+    unsafe {
         if TASK_SENDERS.is_empty() {
             panic!("Executor not set up yet!");
         }
-        &TASK_SENDERS
-    };
 
-    let idx = rand::thread_rng().gen_range(0..task_senders.len());
-    if let Err(err) = task_senders[idx].send(task) {
-        panic!("Failed to spawn task: {err}");
+        let idx = rand::thread_rng().gen_range(0..TASK_SENDERS.len());
+        if let Err(err) = TASK_SENDERS[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
     }
 }
