@@ -57,15 +57,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "executor-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,6 +106,26 @@ checksum = "595a0399f411a508feb2ec1e970a4a30c249351e30208960d58298de8660b0e5"
 dependencies = [
  "bitflags",
  "libc",
+]
+
+[[package]]
+name = "kioto-uring-executor"
+version = "0.1.0"
+dependencies = [
+ "kioto-uring-executor-macros",
+ "log",
+ "rand",
+ "tokio",
+ "tokio-uring",
+]
+
+[[package]]
+name = "kioto-uring-executor-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -302,17 +313,6 @@ dependencies = [
  "slab",
  "socket2 0.4.10",
  "tokio",
-]
-
-[[package]]
-name = "tokio-uring-executor"
-version = "0.1.0"
-dependencies = [
- "executor-macros",
- "log",
- "rand",
- "tokio",
- "tokio-uring",
 ]
 
 [[package]]
