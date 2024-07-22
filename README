@@ -1,0 +1,5 @@
+# A simple multi-threaded wrapper around tokio-uring
+
+*NOTE: This crate is not part of the tokio project*
+
+Once tokio-uring has native support for multi-threading, this crate can be discarded. See the discussion [here](https://github.com/tokio-rs/tokio-uring/issues/258) for more information.

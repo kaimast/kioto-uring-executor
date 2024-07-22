@@ -3,6 +3,10 @@ name = "tokio-uring-executor"
 version = "0.1.0"
 authors = ["Kai Mast <kaimast@cs.cornell.edu>"]
 edition = "2021"
+repository = "https://github.com/kaimast/tokio-uring-executor"
+description = "A simple multi-threaded wrapper around tokio-uring"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 tokio-uring = "0.5"
