@@ -1,7 +1,11 @@
 [package]
-name = "executor-macros"
+name = "kioto-uring-executor-macros"
+authors = ["Kai Mast <kai@kaimast.com>"]
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/kaimast/tokio-uring-executor"
+description = "Macros for kioto-uring-executor"
+license = "MIT"
 
 [lib]
 proc-macro = true
