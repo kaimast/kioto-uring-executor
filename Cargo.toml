@@ -9,7 +9,7 @@ tokio-uring = "0.5"
 tokio = { version="1", default-features=false, features=["sync"] }
 log = "0.4"
 rand = "0.8"
-executor-macros = { path="./executor-macros" }
+executor-macros = { version="0.1", path="./executor-macros" }
 
 [workspace]
 members = ["executor-macros"]
