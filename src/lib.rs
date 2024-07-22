@@ -1,5 +1,4 @@
 /// Manages multiple tokio-uring runtimes for multi-threading
-
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -10,7 +9,7 @@ use tokio::sync::mpsc;
 
 use std::sync::mpsc as std_mpsc;
 
-pub use kioto_executor_macros::test;
+pub use kioto_uring_executor_macros::test;
 
 pub struct Task {
     future: Pin<Box<dyn Future<Output = ()> + 'static>>,
