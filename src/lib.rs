@@ -63,11 +63,12 @@ pub fn initialize() {
 
 pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
     let num_os_threads = num_os_threads.get();
+    let mut task_senders = TASK_SENDERS.write();
+    if !task_senders.is_empty() {
+        panic!("Tokio runtime already set up!");
+    }
 
     log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
-
-    let mut task_senders = TASK_SENDERS.write();
-    assert!(task_senders.is_empty());
 
     for _ in 0..num_os_threads {
         let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
