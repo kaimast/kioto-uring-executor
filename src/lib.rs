@@ -2,12 +2,13 @@
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
+use std::sync::mpsc as std_mpsc;
+
+use parking_lot::RwLock;
 
 use rand::Rng;
 
 use tokio::sync::mpsc;
-
-use std::sync::mpsc as std_mpsc;
 
 pub use kioto_uring_executor_macros::test;
 
@@ -19,8 +20,7 @@ unsafe impl Send for Task {}
 
 pub type TaskSender = mpsc::UnboundedSender<Task>;
 
-const MIN_EXECUTOR_THREADS: usize = 8;
-static mut TASK_SENDERS: Vec<TaskSender> = vec![];
+static TASK_SENDERS: RwLock<Vec<TaskSender>> = const { RwLock::new(vec![]) };
 
 pub struct SpawnPos {
     thread_idx: usize,
@@ -42,16 +42,18 @@ impl SpawnPos {
     }
 
     pub fn advance(&mut self) {
-        let num_os_threads = std::thread::available_parallelism()
-            .unwrap()
-            .get()
-            .max(MIN_EXECUTOR_THREADS);
-        self.thread_idx = (self.thread_idx + 1) % num_os_threads;
+        let num_worker_threads = get_num_threads();
+        self.thread_idx = (self.thread_idx + 1) % num_worker_threads;
     }
 }
 
 pub fn get_num_threads() -> usize {
-    unsafe { TASK_SENDERS.len() }
+    let senders = TASK_SENDERS.read();
+    if senders.is_empty() {
+        panic!("No active kioto runtime")
+    }
+
+    senders.len()
 }
 
 pub fn initialize() {
@@ -60,11 +62,13 @@ pub fn initialize() {
 }
 
 pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
-    let num_os_threads = num_os_threads.get().max(MIN_EXECUTOR_THREADS);
+    let num_os_threads = num_os_threads.get();
+    let mut task_senders = TASK_SENDERS.write();
+    if !task_senders.is_empty() {
+        panic!("Tokio runtime already set up!");
+    }
 
     log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
-
-    let mut task_senders = Vec::with_capacity(num_os_threads);
 
     for _ in 0..num_os_threads {
         let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
@@ -77,10 +81,6 @@ pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
                 }
             });
         });
-    }
-
-    unsafe {
-        TASK_SENDERS = task_senders;
     }
 }
 
@@ -101,7 +101,6 @@ pub fn block_on<F: Future<Output = ()> + Send + 'static>(task: F) {
 /// # Safety
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-
 pub unsafe fn unsafe_block_on<F: Future<Output = ()> + 'static>(task: F) {
     let (sender, receiver) = std_mpsc::channel();
 
@@ -119,15 +118,14 @@ pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) {
         future: Box::pin(task),
     };
 
-    unsafe {
-        if TASK_SENDERS.is_empty() {
-            panic!("Executor not set up yet!");
-        }
+    let senders = TASK_SENDERS.read();
+    if senders.is_empty() {
+        panic!("Executor not set up yet!");
+    }
 
-        let idx = rand::thread_rng().gen_range(0..TASK_SENDERS.len());
-        if let Err(err) = TASK_SENDERS[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
+    let idx = rand::thread_rng().gen_range(0..senders.len());
+    if let Err(err) = senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -137,15 +135,14 @@ pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(offset: usize, task: F)
         future: Box::pin(task),
     };
 
-    unsafe {
-        if TASK_SENDERS.is_empty() {
-            panic!("Executor not set up yet!");
-        }
+    let senders = TASK_SENDERS.read();
+    if senders.is_empty() {
+        panic!("Executor not set up yet!");
+    }
 
-        let idx = offset % TASK_SENDERS.len();
-        if let Err(err) = TASK_SENDERS[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
+    let idx = offset % senders.len();
+    if let Err(err) = senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -158,15 +155,14 @@ pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(offset: usize, t
         future: Box::pin(task),
     };
 
-    unsafe {
-        if TASK_SENDERS.is_empty() {
-            panic!("Executor not set up yet!");
-        }
+    let senders = TASK_SENDERS.read();
+    if senders.is_empty() {
+        panic!("Executor not set up yet!");
+    }
 
-        let idx = offset % TASK_SENDERS.len();
-        if let Err(err) = TASK_SENDERS[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
+    let idx = offset % senders.len();
+    if let Err(err) = senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
 
@@ -179,14 +175,13 @@ pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
         future: Box::pin(task),
     };
 
-    unsafe {
-        if TASK_SENDERS.is_empty() {
-            panic!("Executor not set up yet!");
-        }
+    let senders = TASK_SENDERS.read();
+    if senders.is_empty() {
+        panic!("Executor not set up yet!");
+    }
 
-        let idx = rand::thread_rng().gen_range(0..TASK_SENDERS.len());
-        if let Err(err) = TASK_SENDERS[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
+    let idx = rand::thread_rng().gen_range(0..senders.len());
+    if let Err(err) = senders[idx].send(task) {
+        panic!("Failed to spawn task: {err}");
     }
 }
