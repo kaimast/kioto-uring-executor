@@ -85,7 +85,7 @@ pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
 }
 
 /// Emulates tokio's block_on call
-pub fn block_on<T: Send, F: Future<Output = T> + Send>(task: F)-> T {
+pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(task: F) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
     spawn(async move {
@@ -101,12 +101,12 @@ pub fn block_on<T: Send, F: Future<Output = T> + Send>(task: F)-> T {
 /// # Safety
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_block_on<T: Send, F: Future<Output = T> + 'static>(task: F) -> T {
+pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(task: F) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
     unsafe_spawn(async move {
         let res = task.await;
-        sender.send(t).expect("Notification failed");
+        sender.send(res).expect("Notification failed");
     });
 
     receiver.recv().expect("Failed to wait for task")
