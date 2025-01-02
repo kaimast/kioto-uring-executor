@@ -31,12 +31,9 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     let tokio_expr = quote! {
         tokio_uring_executor::initialize();
-
-        unsafe {
-            tokio_uring_executor::unsafe_block_on(async {
-                #body
-            });
-        }
+        tokio_uring_executor::block_on(async {
+            #body
+        })
     };
 
     input.block = syn::parse2(quote! {
