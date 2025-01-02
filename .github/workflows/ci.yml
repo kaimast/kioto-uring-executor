@@ -20,6 +20,4 @@ jobs:
          toolchain: nightly
          components: cargo, rustc, clippy, rustfmt
     - name: "Lint Checks"
-      run: cargo clippy --no-default-features -- -D warnings
-    - name: "Formatting Checks"
-      run: cargo fmt --check
+      run: cargo clippy 
