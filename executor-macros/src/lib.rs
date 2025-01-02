@@ -89,5 +89,6 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     quote! {
         #input
-    }.into()
+    }
+    .into()
 }
