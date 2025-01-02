@@ -63,6 +63,10 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
         panic!("the `async` keyword is missing from the main function declaration");
     }
 
+    if input.sig.ident != "main" {
+        panic!("Main function must be called `main`");
+    }
+
     input.sig.asyncness = None;
 
     let body = &input.block;
@@ -83,7 +87,7 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
     .expect("Parsing failure");
     input.block.brace_token = brace_token;
 
-    quote!{
+    quote! {
         #input
     }.into()
 }
