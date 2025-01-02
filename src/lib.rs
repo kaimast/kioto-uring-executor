@@ -85,7 +85,16 @@ pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
 }
 
 /// Emulates tokio's block_on call
-pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(task: F) -> T {
+///
+/// This will spawn a new tokio runtime on the current thread
+pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
+    tokio_uring::start(task)
+}
+
+/// Emulates tokio's block_on call
+///
+/// This will use an existing exeuctor
+pub fn block_on_executor<T: Send + 'static, F: Future<Output = T> + Send + 'static>(task: F) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
     spawn(async move {
@@ -101,7 +110,9 @@ pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(task:
 /// # Safety
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(task: F) -> T {
+pub unsafe fn unsafe_block_on_executor<T: Send + 'static, F: Future<Output = T> + 'static>(
+    task: F,
+) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
     unsafe_spawn(async move {
