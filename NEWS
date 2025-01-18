@@ -1,4 +1,5 @@
 UNRELEASED (0.2):
+    - Move to a more object-oriented model with Runtime objects
     - block_on now runs in the current thread (will spawn a new runtime)
     - Support for block_on with return values
 
