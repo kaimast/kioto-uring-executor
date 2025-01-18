@@ -34,7 +34,7 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
         let result = tokio_uring_executor::block_on(async {
             #body
         });
-        tokio_uring::shutdown();
+        tokio_uring_exeuctor::shutdown();
         result
     };
 
