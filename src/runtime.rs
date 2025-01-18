@@ -31,12 +31,25 @@ pub struct Runtime {
     inner: Arc<RuntimeInner>,
 }
 
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct SpawnRing {
     inner: Arc<RuntimeInner>,
     thread_idx: usize,
 }
 
 impl SpawnRing {
+    pub(super) fn new(inner: Arc<RuntimeInner>) -> Self {
+        Self {
+            inner,
+            thread_idx: 0,
+        }
+    }
+
     pub fn get(&self) -> usize {
         self.thread_idx
     }
@@ -78,15 +91,6 @@ impl Runtime {
         }
 
         Self { inner }
-    }
-
-    /// Create a primitive that lets you distribute tasks
-    /// across worker threads in a round-robin fashion
-    pub fn ring(&self) -> SpawnRing {
-        SpawnRing {
-            thread_idx: 0,
-            inner: self.inner.clone(),
-        }
     }
 
     /// Blocks the current thread until the runtime has finished th task
@@ -138,6 +142,12 @@ impl Runtime {
     /// (Can be not Send afterwards)
     pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(&self, task: F) {
         self.inner.unsafe_spawn(task)
+    }
+
+    /// Create a primitive that lets you distribute tasks
+    /// across worker threads in a round-robin fashion
+    pub fn new_spawn_ring(&self) -> SpawnRing {
+        SpawnRing::new(self.inner.clone())
     }
 }
 

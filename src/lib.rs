@@ -4,7 +4,7 @@ use std::sync::mpsc as std_mpsc;
 pub use kioto_uring_executor_macros::test;
 
 mod runtime;
-pub use runtime::Runtime;
+pub use runtime::{Runtime, SpawnRing};
 
 use runtime::ACTIVE_RUNTIME;
 
@@ -13,6 +13,16 @@ use runtime::ACTIVE_RUNTIME;
 /// This will spawn a new tokio runtime on the current thread
 pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
     tokio_uring::start(task)
+}
+
+/// Create a primitive that lets you distribute tasks
+/// across worker threads in a round-robin fashion
+pub fn new_spawn_ring() -> SpawnRing {
+    ACTIVE_RUNTIME.with_borrow(|r| {
+        let inner = r.as_ref().expect("No active runtime").clone();
+
+        SpawnRing::new(inner)
+    })
 }
 
 /// Spawns the task on a random thread
