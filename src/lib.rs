@@ -10,7 +10,8 @@ use rand::Rng;
 
 use tokio::sync::mpsc;
 
-pub use kioto_uring_executor_macros::test;
+#[cfg(feature = "macros")]
+pub use kioto_uring_executor_macros::{main, test};
 
 pub struct Task {
     future: Pin<Box<dyn Future<Output = ()> + 'static>>,

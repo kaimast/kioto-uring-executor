@@ -16,5 +16,9 @@ rand = "0.8"
 parking_lot = "0.12"
 kioto-uring-executor-macros = { version="0.1", path="./executor-macros" }
 
+[features]
+default = ["macros"]
+macros = []
+
 [workspace]
 members = ["executor-macros"]
