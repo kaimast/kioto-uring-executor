@@ -32,3 +32,9 @@ fn spawn() {
 
     println!("{}", receiver.recv().unwrap());
 }
+
+#[kioto_uring_executor::test]
+async fn executor_macro() {
+    sleep(Duration::from_millis(10)).await;
+    println!("Hello world");
+}
