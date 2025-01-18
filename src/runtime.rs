@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
+use std::sync::mpsc as std_mpsc;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -88,6 +89,26 @@ impl Runtime {
         }
     }
 
+    /// Blocks the current thread until the runtime has finished th task
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> T {
+        self.inner.block_on(task)
+    }
+
+    /// Blocks the current thread until the runtime has finished th task (unsafe version)
+    ///
+    /// # Safety
+    /// Make sure task is Send before polled for the first time
+    /// (Can be not Send afterwards)
+    pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(
+        &self,
+        task: F,
+    ) -> T {
+        self.inner.unsafe_block_on(task)
+    }
+
     /// Spawns the task on a random thread
     pub fn spawn<F: Future<Output = ()> + Send + 'static>(&self, task: F) {
         self.inner.spawn(task)
@@ -158,6 +179,40 @@ impl RuntimeInner {
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
+    }
+
+    /// Blocks the current thread until the runtime has finished th task
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> T {
+        let (sender, receiver) = std_mpsc::channel();
+
+        self.spawn(async move {
+            let res = task.await;
+            sender.send(res).expect("Notification failed");
+        });
+
+        receiver.recv().expect("Failed to wait for task")
+    }
+
+    /// Blocks the current thread until the runtime has finished th task (unsafe version)
+    ///
+    /// # Safety
+    /// Make sure task is Send before polled for the first time
+    /// (Can be not Send afterwards)
+    pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(
+        &self,
+        task: F,
+    ) -> T {
+        let (sender, receiver) = std_mpsc::channel();
+
+        self.unsafe_spawn(async move {
+            let res = task.await;
+            sender.send(res).expect("Notification failed");
+        });
+
+        receiver.recv().expect("Failed to wait for task")
     }
 
     /// # Safety

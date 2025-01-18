@@ -12,6 +12,15 @@ fn block_on() {
 }
 
 #[test]
+fn runtime_block_on() {
+    let runtime = executor::Runtime::new();
+    runtime.block_on(async {
+        sleep(Duration::from_millis(10)).await;
+        println!("Hello world");
+    })
+}
+
+#[test]
 fn spawn() {
     let runtime = executor::Runtime::new();
     let (sender, receiver) = mpsc::channel();
