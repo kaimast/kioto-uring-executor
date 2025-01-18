@@ -30,10 +30,12 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let tokio_expr = quote! {
-        tokio_uring_executor::initialize();
-        tokio_uring_executor::block_on(async {
-            #body
-        })
+        let runtime = kioto_uring_executor::Runtime::new();
+        unsafe {
+                runtime.unsafe_block_on(async {
+                    #body
+                })
+        }
     };
 
     input.block = syn::parse2(quote! {
@@ -73,10 +75,12 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
     let brace_token = input.block.brace_token;
 
     let tokio_expr = quote! {
-        tokio_uring_executor::initialize();
-        tokio_uring_executor::block_on(async {
-            #body
-        })
+        unsafe {
+            let runtime = kioto_uring_executor::Runtime::new();
+            runtime.unsafe_block_on(async {
+                #body
+            })
+        }
     };
 
     input.block = syn::parse2(quote! {

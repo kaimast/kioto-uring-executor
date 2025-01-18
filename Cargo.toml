@@ -1,6 +1,6 @@
 [package]
 name = "kioto-uring-executor"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Kai Mast <kai@kaimast.com>"]
 edition = "2021"
 repository = "https://github.com/kaimast/tokio-uring-executor"
@@ -10,11 +10,27 @@ readme = "README.md"
 
 [dependencies]
 tokio-uring = "0.5"
-tokio = { version="1", default-features=false, features=["sync"] }
 log = "0.4"
 rand = "0.8"
 parking_lot = "0.12"
-kioto-uring-executor-macros = { version="0.1", path="./executor-macros" }
+
+[dependencies.tokio]
+version="1"
+default-features=false
+features=["sync"]
+
+[dependencies.kioto-uring-executor-macros]
+version="0.2"
+path="./executor-macros"
+
+[dev-dependencies.tokio]
+version="1"
+default-features=false
+features=["time"]
 
 [workspace]
 members = ["executor-macros"]
+
+[features]
+default = ["macros"]
+macros = []
