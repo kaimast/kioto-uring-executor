@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::mpsc as std_mpsc;
 
-#[cfg(feature="macros")]
+#[cfg(feature = "macros")]
 pub use kioto_uring_executor_macros::{main, test};
 
 mod runtime;
