@@ -30,3 +30,7 @@ features=["time"]
 
 [workspace]
 members = ["executor-macros"]
+
+[features]
+default = ["macros"]
+macros = []

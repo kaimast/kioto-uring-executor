@@ -1,7 +1,8 @@
 use std::future::Future;
 use std::sync::mpsc as std_mpsc;
 
-pub use kioto_uring_executor_macros::test;
+#[cfg(feature="macros")]
+pub use kioto_uring_executor_macros::{main, test};
 
 mod runtime;
 pub use runtime::{Runtime, SpawnRing};
