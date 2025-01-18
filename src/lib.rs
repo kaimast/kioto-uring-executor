@@ -61,6 +61,10 @@ pub fn initialize() {
     initialize_with_threads(thread_count)
 }
 
+pub fn shutdown() {
+    let _ = std::mem::take(&mut *TASK_SENDERS.write());
+}
+
 pub fn initialize_with_threads(num_os_threads: NonZeroUsize) {
     let num_os_threads = num_os_threads.get();
     let mut task_senders = TASK_SENDERS.write();

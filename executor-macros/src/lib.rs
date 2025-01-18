@@ -31,9 +31,11 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     let tokio_expr = quote! {
         tokio_uring_executor::initialize();
-        tokio_uring_executor::block_on(async {
+        let result = tokio_uring_executor::block_on(async {
             #body
-        })
+        });
+        tokio_uring::shutdown();
+        result
     };
 
     input.block = syn::parse2(quote! {
