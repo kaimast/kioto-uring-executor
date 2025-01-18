@@ -51,9 +51,7 @@ pub fn block_on_runtime<T: Send + 'static, F: Future<Output = T> + Send + 'stati
 /// # Safety
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_block_on_runtime<T: Send + 'static, F: Future<Output = T> + 'static>(
-    task: F,
-) -> T {
+pub unsafe fn unsafe_block_on_runtime<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
     unsafe_spawn(async move {
@@ -76,7 +74,7 @@ pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
 ///
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + Send + 'static>(offset: usize, task: F) {
+pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(offset: usize, task: F) {
     ACTIVE_RUNTIME.with_borrow(|r| {
         r.as_ref()
             .expect("No active runtime")
