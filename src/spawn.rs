@@ -61,9 +61,21 @@ pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_local(func))
 }
 
-/// Spawns the task on a random thread
+/// Spawns the task on a random thread (non-send version)
 pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(func: F) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_with(func))
+}
+
+/// Spawns the task on the given thread index (non-send version)
+pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
+    offset: usize,
+    func: F,
+) -> JoinHandle<O> {
+    ACTIVE_RUNTIME.with_borrow(|r| {
+        r.as_ref()
+            .expect("No active runtime")
+            .spawn_with_at(offset, func)
+    })
 }
 
 /// Spawns the task on a specific thread
