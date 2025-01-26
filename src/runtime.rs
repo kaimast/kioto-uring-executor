@@ -11,8 +11,16 @@ use rand::Rng;
 
 use tokio::sync::mpsc;
 
+/// A wrapper for a future that can be send to another thread
+/// Once it arrives at the other thread, the resulting
+/// future can be not send
+pub trait FutureWith<O: Send + 'static> =
+    FnOnce() -> Pin<Box<dyn Future<Output = O> + 'static>> + 'static;
+
+trait Generator = FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>>;
+
 pub struct Task {
-    future: Pin<Box<dyn Future<Output = ()> + 'static>>,
+    generator: Box<dyn Generator>,
 }
 
 unsafe impl Send for Task {}
@@ -95,7 +103,8 @@ impl Runtime {
                 });
                 tokio_uring::start(async {
                     while let Some(task) = receiver.recv().await {
-                        tokio_uring::spawn(task.future);
+                        let future = (task.generator)();
+                        tokio_uring::spawn(future);
                     }
                 });
             });
@@ -130,6 +139,14 @@ impl Runtime {
         task: F,
     ) -> JoinHandle<O> {
         self.inner.spawn(task)
+    }
+
+    /// Spawns the task on a random thread
+    pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        self.inner.spawn_with(func)
     }
 
     /// How many worker threads are there?
@@ -189,9 +206,29 @@ impl RuntimeInner {
         let (sender, receiver) = tokio::sync::oneshot::channel();
 
         let task = Task {
-            future: Box::pin(async move {
-                let result = func.await;
-                let _ = sender.send(result);
+            generator: Box::new(|| {
+                Box::pin(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                })
+            }),
+        };
+
+        let hdl = JoinHandle { receiver };
+
+        (task, hdl)
+    }
+
+    fn wrap_function_with<O: Send + 'static, F: FutureWith<O>>(func: F) -> (Task, JoinHandle<O>) {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        let task = Task {
+            generator: Box::new(move || {
+                let func = func();
+                Box::pin(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                })
             }),
         };
 
@@ -206,15 +243,36 @@ impl RuntimeInner {
         let (sender, receiver) = tokio::sync::oneshot::channel();
 
         let task = Task {
-            future: Box::pin(async move {
-                let result = func.await;
-                let _ = sender.send(result);
+            generator: Box::new(|| {
+                Box::pin(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                })
             }),
         };
 
         let hdl = JoinHandle { receiver };
 
         (task, hdl)
+    }
+
+    pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::wrap_function_with(func);
+
+        let senders = self.task_senders.read();
+        if senders.is_empty() {
+            panic!("Executor not set up yet!");
+        }
+
+        let idx = rand::thread_rng().gen_range(0..senders.len());
+        if let Err(err) = senders[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
+
+        hdl
     }
 
     pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(

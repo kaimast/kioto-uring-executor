@@ -1,3 +1,5 @@
+#![feature(trait_alias)]
+
 use std::future::Future;
 use std::sync::mpsc as std_mpsc;
 
@@ -5,7 +7,7 @@ use std::sync::mpsc as std_mpsc;
 pub use kioto_uring_executor_macros::{main, test};
 
 mod runtime;
-pub use runtime::{JoinHandle, Runtime, SpawnRing};
+pub use runtime::{FutureWith, JoinHandle, Runtime, SpawnRing};
 
 use runtime::ACTIVE_RUNTIME;
 
@@ -31,6 +33,11 @@ pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
     func: F,
 ) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn(func))
+}
+
+/// Spawns the task on a random thread
+pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(func: F) -> JoinHandle<O> {
+    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_with(func))
 }
 
 /// Spawns the task on a specific thread
