@@ -44,3 +44,7 @@ pub unsafe fn unsafe_block_on_runtime<T: 'static, F: Future<Output = T> + 'stati
 
     receiver.recv().expect("Failed to wait for task")
 }
+
+pub fn get_runtime_thread_count() -> usize {
+    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").get_thread_count())
+}

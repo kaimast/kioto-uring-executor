@@ -140,8 +140,8 @@ impl Runtime {
     }
 
     /// How many worker threads are there?
-    pub fn get_num_threads(&self) -> usize {
-        self.inner.get_num_threads()
+    pub fn get_thread_count(&self) -> usize {
+        self.inner.get_thread_count()
     }
 
     /// # Safety
@@ -400,7 +400,7 @@ impl RuntimeInner {
         hdl
     }
 
-    pub fn get_num_threads(&self) -> usize {
+    pub fn get_thread_count(&self) -> usize {
         let senders = self.task_senders.read();
         if senders.is_empty() {
             panic!("No active kioto runtime")

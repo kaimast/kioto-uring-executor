@@ -32,7 +32,7 @@ impl SpawnRing {
     }
 
     fn advance(&mut self) {
-        let num_worker_threads = self.inner.get_num_threads();
+        let num_worker_threads = self.inner.get_thread_count();
         self.thread_idx = (self.thread_idx + 1) % num_worker_threads;
     }
 }
