@@ -27,7 +27,7 @@ impl SpawnRing {
         self.wrapped
     }
 
-    pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
+    pub fn spawn<O: Send + Sized, F: Future<Output = O> + 'static>(
         &mut self,
         func: F,
     ) -> JoinHandle<O> {
@@ -94,40 +94,9 @@ pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
 }
 
 /// Spawns the task on a specific thread
-pub fn spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
+pub fn spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
     offset: usize,
     func: F,
 ) -> JoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| {
-        r.as_ref()
-            .expect("No active runtime")
-            .spawn_at(offset, func)
-    })
-}
-
-/// # Safety
-///
-/// Make sure task is Send before polled for the first time
-/// (Can be not Send afterwards)
-#[deprecated]
-pub unsafe fn unsafe_spawn<O: Send + 'static, F: Future<Output = O> + 'static>(
-    task: F,
-) -> JoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").unsafe_spawn(task))
-}
-
-/// # Safety
-///
-/// Make sure task is Send before polled for the first time
-/// (Can be not Send afterwards)
-#[deprecated]
-pub unsafe fn unsafe_spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
-    offset: usize,
-    task: F,
-) -> JoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| {
-        r.as_ref()
-            .expect("No active runtime")
-            .unsafe_spawn_at(offset, task)
-    })
+    spawn_with_at(offset, || Box::pin(func))
 }
