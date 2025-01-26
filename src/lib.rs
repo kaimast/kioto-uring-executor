@@ -35,6 +35,13 @@ pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn(func))
 }
 
+/// Spawns the task on the current thread
+pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+    func: F,
+) -> JoinHandle<O> {
+    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_local(func))
+}
+
 /// Spawns the task on a random thread
 pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(func: F) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_with(func))
@@ -64,9 +71,11 @@ pub fn block_on_runtime<T: Send + 'static, F: Future<Output = T> + Send + 'stati
 /// # Safety
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
+#[deprecated]
 pub unsafe fn unsafe_block_on_runtime<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
     let (sender, receiver) = std_mpsc::channel();
 
+    #[allow(deprecated)]
     unsafe_spawn(async move {
         let res = task.await;
         sender.send(res).expect("Notification failed");
@@ -79,6 +88,7 @@ pub unsafe fn unsafe_block_on_runtime<T: 'static, F: Future<Output = T> + 'stati
 ///
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
+#[deprecated]
 pub unsafe fn unsafe_spawn<O: Send + 'static, F: Future<Output = O> + 'static>(
     task: F,
 ) -> JoinHandle<O> {
@@ -89,6 +99,7 @@ pub unsafe fn unsafe_spawn<O: Send + 'static, F: Future<Output = O> + 'static>(
 ///
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
+#[deprecated]
 pub unsafe fn unsafe_spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
     offset: usize,
     task: F,

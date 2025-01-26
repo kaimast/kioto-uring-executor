@@ -136,12 +136,23 @@ impl Runtime {
     /// Spawns the task on a random thread
     pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
         &self,
-        task: F,
+        func: F,
     ) -> JoinHandle<O> {
-        self.inner.spawn(task)
+        self.inner.spawn(func)
+    }
+
+    /// Spawns the task on the current thread
+    pub fn spawn_local<O: Send + Sized, F: Future<Output = O> + 'static>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        self.inner.spawn_local(func)
     }
 
     /// Spawns the task on a random thread
+    ///
+    /// This allows to send some data even if the resulting
+    /// future is not Sync
     pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(
         &self,
         func: F,
@@ -167,6 +178,7 @@ impl Runtime {
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
+    #[deprecated]
     pub unsafe fn unsafe_spawn_at<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
         &self,
         offset: usize,
@@ -179,6 +191,7 @@ impl Runtime {
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
+    #[deprecated]
     pub unsafe fn unsafe_spawn<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
         &self,
         task: F,
@@ -273,6 +286,20 @@ impl RuntimeInner {
         }
 
         hdl
+    }
+
+    pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        tokio_uring::spawn(async move {
+            let result = func.await;
+            let _ = sender.send(result);
+        });
+
+        JoinHandle { receiver }
     }
 
     pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(

@@ -43,6 +43,16 @@ async fn join() {
     assert_eq!("Hello world".to_string(), hdl.join().await);
 }
 
+#[kioto_uring_executor::test]
+async fn spawn_local() {
+    let hdl = kioto_uring_executor::spawn_local(async move {
+        sleep(Duration::from_millis(10)).await;
+        "Hello world".to_string()
+    });
+
+    assert_eq!("Hello world".to_string(), hdl.join().await);
+}
+
 #[test]
 fn spawn_with() {
     let runtime = executor::Runtime::new();
