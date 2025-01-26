@@ -63,10 +63,8 @@ pub fn new_spawn_ring() -> SpawnRing {
 }
 
 /// Spawns the task on a random thread
-pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
-    func: F,
-) -> JoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn(func))
+pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(func: F) -> JoinHandle<O> {
+    spawn_with(|| Box::pin(func))
 }
 
 /// Spawns the task on the current thread
