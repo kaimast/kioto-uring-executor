@@ -1,7 +1,7 @@
 [package]
 name = "kioto-uring-executor-macros"
 authors = ["Kai Mast <kai@kaimast.com>"]
-version = "0.2.0"
+version = "0.3.0-dev"
 edition = "2021"
 repository = "https://github.com/kaimast/tokio-uring-executor"
 description = "Macros for kioto-uring-executor"

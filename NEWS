@@ -1,3 +1,6 @@
+UNRELEASED (0.3):
+    - Added join handles
+
 0.2:
     - Move to a more object-oriented model with Runtime objects
     - block_on now runs in the current thread (will spawn a new runtime)

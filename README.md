@@ -1,4 +1,4 @@
-# A simple multi-threaded wrapper around tokio-uring
+# A simple multithreaded wrapper around tokio-uring
 
 *NOTE: This crate is not part of the tokio project*
 
