@@ -200,10 +200,7 @@ impl RuntimeInner {
         (task, hdl)
     }
 
-    unsafe fn unsafe_wrap_function<
-        O: Send + Sized + 'static,
-        F: Future<Output = O> + 'static,
-    >(
+    unsafe fn unsafe_wrap_function<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
         func: F,
     ) -> (Task, JoinHandle<O>) {
         let (sender, receiver) = tokio::sync::oneshot::channel();

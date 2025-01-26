@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "kioto-uring-executor"
-version = "0.2.0"
+version = "0.3.0-dev"
 dependencies = [
  "kioto-uring-executor-macros",
  "log",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "kioto-uring-executor-macros"
-version = "0.2.0"
+version = "0.3.0-dev"
 dependencies = [
  "proc-macro2",
  "quote",
