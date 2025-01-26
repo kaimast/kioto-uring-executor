@@ -11,6 +11,8 @@ use rand::Rng;
 
 use tokio::sync::mpsc;
 
+use crate::spawn::SpawnRing;
+
 /// A wrapper for a future that can be send to another thread
 /// Once it arrives at the other thread, the resulting
 /// future can be not send
@@ -53,29 +55,6 @@ pub struct Runtime {
 impl Default for Runtime {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-pub struct SpawnRing {
-    inner: Arc<RuntimeInner>,
-    thread_idx: usize,
-}
-
-impl SpawnRing {
-    pub(super) fn new(inner: Arc<RuntimeInner>) -> Self {
-        Self {
-            inner,
-            thread_idx: 0,
-        }
-    }
-
-    pub fn get(&self) -> usize {
-        self.thread_idx
-    }
-
-    pub fn advance(&mut self) {
-        let num_worker_threads = self.inner.get_num_threads();
-        self.thread_idx = (self.thread_idx + 1) % num_worker_threads;
     }
 }
 
@@ -163,28 +142,6 @@ impl Runtime {
     /// How many worker threads are there?
     pub fn get_num_threads(&self) -> usize {
         self.inner.get_num_threads()
-    }
-
-    /// Spawns the task on a specific thread
-    pub fn spawn_at<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
-        &self,
-        offset: usize,
-        task: F,
-    ) -> JoinHandle<O> {
-        self.inner.spawn_at(offset, task)
-    }
-
-    /// # Safety
-    ///
-    /// Make sure task is Send before polled for the first time
-    /// (Can be not Send afterwards)
-    #[deprecated]
-    pub unsafe fn unsafe_spawn_at<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
-        &self,
-        offset: usize,
-        task: F,
-    ) -> JoinHandle<O> {
-        self.inner.unsafe_spawn_at(offset, task)
     }
 
     /// # Safety
@@ -281,6 +238,26 @@ impl RuntimeInner {
         }
 
         let idx = rand::thread_rng().gen_range(0..senders.len());
+        if let Err(err) = senders[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
+
+        hdl
+    }
+
+    pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
+        &self,
+        offset: usize,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::wrap_function_with(func);
+
+        let senders = self.task_senders.read();
+        if senders.is_empty() {
+            panic!("Executor not set up yet!");
+        }
+
+        let idx = offset % senders.len();
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }

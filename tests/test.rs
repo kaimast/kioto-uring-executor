@@ -67,6 +67,17 @@ fn spawn_with() {
 
     assert_eq!("Hello world".to_string(), receiver.recv().unwrap());
 }
+
+#[kioto_uring_executor::test]
+async fn spawn_ring() {
+    let mut ring = kioto_uring_executor::new_spawn_ring();
+    let hdl = ring.spawn(async move {
+        sleep(Duration::from_millis(10)).await;
+        println!("Hello world");
+    });
+
+    hdl.join().await;
+}
 #[kioto_uring_executor::test]
 async fn executor_macro() {
     sleep(Duration::from_millis(10)).await;
