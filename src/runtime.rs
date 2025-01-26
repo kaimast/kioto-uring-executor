@@ -17,10 +17,21 @@ pub struct Task {
 
 unsafe impl Send for Task {}
 
-pub type TaskSender = mpsc::UnboundedSender<Task>;
+type TaskSender = mpsc::UnboundedSender<Task>;
 
 thread_local! {
     pub(super) static ACTIVE_RUNTIME: RefCell<Option<Arc<RuntimeInner>>> = const { RefCell::new(None) };
+}
+
+pub struct JoinHandle<O: Sized + Send + 'static> {
+    receiver: tokio::sync::oneshot::Receiver<O>,
+}
+
+impl<O: Send> JoinHandle<O> {
+    /// Block until the associated task finished
+    pub async fn join(self) -> O {
+        self.receiver.await.unwrap()
+    }
 }
 
 pub(super) struct RuntimeInner {
@@ -114,7 +125,10 @@ impl Runtime {
     }
 
     /// Spawns the task on a random thread
-    pub fn spawn<F: Future<Output = ()> + Send + 'static>(&self, task: F) {
+    pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> JoinHandle<O> {
         self.inner.spawn(task)
     }
 
@@ -124,7 +138,11 @@ impl Runtime {
     }
 
     /// Spawns the task on a specific thread
-    pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(&self, offset: usize, task: F) {
+    pub fn spawn_at<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
+        &self,
+        offset: usize,
+        task: F,
+    ) -> JoinHandle<O> {
         self.inner.spawn_at(offset, task)
     }
 
@@ -132,7 +150,11 @@ impl Runtime {
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(&self, offset: usize, task: F) {
+    pub unsafe fn unsafe_spawn_at<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
+        &self,
+        offset: usize,
+        task: F,
+    ) -> JoinHandle<O> {
         self.inner.unsafe_spawn_at(offset, task)
     }
 
@@ -140,7 +162,10 @@ impl Runtime {
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(&self, task: F) {
+    pub unsafe fn unsafe_spawn<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
+        &self,
+        task: F,
+    ) -> JoinHandle<O> {
         self.inner.unsafe_spawn(task)
     }
 
@@ -158,10 +183,48 @@ impl Drop for Runtime {
 }
 
 impl RuntimeInner {
-    pub fn spawn<F: Future<Output = ()> + Send + 'static>(&self, task: F) {
+    fn wrap_function<O: Send + 'static, F: Future<Output = O> + Send + 'static>(
+        func: F,
+    ) -> (Task, JoinHandle<O>) {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
         let task = Task {
-            future: Box::pin(task),
+            future: Box::pin(async move {
+                let result = func.await;
+                let _ = sender.send(result);
+            }),
         };
+
+        let hdl = JoinHandle { receiver };
+
+        (task, hdl)
+    }
+
+    unsafe fn unsafe_wrap_function<
+        O: Send + Sized + 'static,
+        F: Future<Output = O> + 'static,
+    >(
+        func: F,
+    ) -> (Task, JoinHandle<O>) {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        let task = Task {
+            future: Box::pin(async move {
+                let result = func.await;
+                let _ = sender.send(result);
+            }),
+        };
+
+        let hdl = JoinHandle { receiver };
+
+        (task, hdl)
+    }
+
+    pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::wrap_function(func);
 
         let senders = self.task_senders.read();
         if senders.is_empty() {
@@ -172,13 +235,17 @@ impl RuntimeInner {
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
+
+        hdl
     }
 
     /// Spawns the task on a specific thread
-    pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(&self, offset: usize, task: F) {
-        let task = Task {
-            future: Box::pin(task),
-        };
+    pub fn spawn_at<O: Send + 'static, F: Future<Output = O> + Send + 'static>(
+        &self,
+        offset: usize,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::wrap_function(func);
 
         let senders = self.task_senders.read();
         if senders.is_empty() {
@@ -189,6 +256,8 @@ impl RuntimeInner {
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
+
+        hdl
     }
 
     /// Blocks the current thread until the runtime has finished th task
@@ -229,10 +298,12 @@ impl RuntimeInner {
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(&self, offset: usize, task: F) {
-        let task = Task {
-            future: Box::pin(task),
-        };
+    pub unsafe fn unsafe_spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+        &self,
+        offset: usize,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::unsafe_wrap_function(func);
 
         let senders = self.task_senders.read();
         if senders.is_empty() {
@@ -243,16 +314,19 @@ impl RuntimeInner {
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
+
+        hdl
     }
 
     /// # Safety
     ///
     /// Make sure task is Send before polled for the first time
     /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(&self, task: F) {
-        let task = Task {
-            future: Box::pin(task),
-        };
+    pub unsafe fn unsafe_spawn<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        let (task, hdl) = Self::unsafe_wrap_function(func);
 
         let senders = self.task_senders.read();
         if senders.is_empty() {
@@ -263,6 +337,8 @@ impl RuntimeInner {
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
+
+        hdl
     }
 
     pub fn get_num_threads(&self) -> usize {

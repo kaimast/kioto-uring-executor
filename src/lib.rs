@@ -5,7 +5,7 @@ use std::sync::mpsc as std_mpsc;
 pub use kioto_uring_executor_macros::{main, test};
 
 mod runtime;
-pub use runtime::{Runtime, SpawnRing};
+pub use runtime::{JoinHandle, Runtime, SpawnRing};
 
 use runtime::ACTIVE_RUNTIME;
 
@@ -27,16 +27,21 @@ pub fn new_spawn_ring() -> SpawnRing {
 }
 
 /// Spawns the task on a random thread
-pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn(task))
+pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
+    func: F,
+) -> JoinHandle<O> {
+    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn(func))
 }
 
 /// Spawns the task on a specific thread
-pub fn spawn_at<F: Future<Output = ()> + Send + 'static>(offset: usize, task: F) {
+pub fn spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
+    offset: usize,
+    func: F,
+) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| {
         r.as_ref()
             .expect("No active runtime")
-            .spawn_at(offset, task)
+            .spawn_at(offset, func)
     })
 }
 
@@ -67,7 +72,9 @@ pub unsafe fn unsafe_block_on_runtime<T: 'static, F: Future<Output = T> + 'stati
 ///
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
+pub unsafe fn unsafe_spawn<O: Send + 'static, F: Future<Output = O> + 'static>(
+    task: F,
+) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").unsafe_spawn(task))
 }
 
@@ -75,7 +82,10 @@ pub unsafe fn unsafe_spawn<F: Future<Output = ()> + 'static>(task: F) {
 ///
 /// Make sure task is Send before polled for the first time
 /// (Can be not Send afterwards)
-pub unsafe fn unsafe_spawn_at<F: Future<Output = ()> + 'static>(offset: usize, task: F) {
+pub unsafe fn unsafe_spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+    offset: usize,
+    task: F,
+) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| {
         r.as_ref()
             .expect("No active runtime")
