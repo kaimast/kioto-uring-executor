@@ -93,23 +93,8 @@ impl Runtime {
     }
 
     /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
-        &self,
-        task: F,
-    ) -> T {
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + 'static>(&self, task: F) -> T {
         self.inner.block_on(task)
-    }
-
-    /// Blocks the current thread until the runtime has finished th task (unsafe version)
-    ///
-    /// # Safety
-    /// Make sure task is Send before polled for the first time
-    /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(
-        &self,
-        task: F,
-    ) -> T {
-        self.inner.unsafe_block_on(task)
     }
 
     /// Spawns the task on a random thread
@@ -279,23 +264,11 @@ impl RuntimeInner {
         JoinHandle { receiver }
     }
 
-    pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
+    pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
         &self,
         func: F,
     ) -> JoinHandle<O> {
-        let (task, hdl) = Self::wrap_function(func);
-
-        let senders = self.task_senders.read();
-        if senders.is_empty() {
-            panic!("Executor not set up yet!");
-        }
-
-        let idx = rand::thread_rng().gen_range(0..senders.len());
-        if let Err(err) = senders[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
-
-        hdl
+        self.spawn_with(move || Box::pin(func))
     }
 
     /// Spawns the task on a specific thread
@@ -320,32 +293,10 @@ impl RuntimeInner {
     }
 
     /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
-        &self,
-        task: F,
-    ) -> T {
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + 'static>(&self, task: F) -> T {
         let (sender, receiver) = std_mpsc::channel();
 
         self.spawn(async move {
-            let res = task.await;
-            sender.send(res).expect("Notification failed");
-        });
-
-        receiver.recv().expect("Failed to wait for task")
-    }
-
-    /// Blocks the current thread until the runtime has finished th task (unsafe version)
-    ///
-    /// # Safety
-    /// Make sure task is Send before polled for the first time
-    /// (Can be not Send afterwards)
-    pub unsafe fn unsafe_block_on<T: Send + 'static, F: Future<Output = T> + 'static>(
-        &self,
-        task: F,
-    ) -> T {
-        let (sender, receiver) = std_mpsc::channel();
-
-        self.unsafe_spawn(async move {
             let res = task.await;
             sender.send(res).expect("Notification failed");
         });

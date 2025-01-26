@@ -20,7 +20,7 @@ impl SpawnRing {
             wrapped: false,
         }
     }
-   
+
     // Have we spawned a task on all threads already and
     // the position got reset to zero?
     pub fn has_wrapped(&self) -> bool {
@@ -44,7 +44,7 @@ impl SpawnRing {
 
     fn advance(&mut self) {
         self.thread_idx += 1;
-        
+
         if self.thread_idx >= self.inner.get_thread_count() {
             self.wrapped = true;
             self.thread_idx = 0;
