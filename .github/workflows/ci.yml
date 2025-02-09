@@ -24,12 +24,12 @@ jobs:
       with:
         tool: just
     - name: "Tests: Tokio-uring"
-      run: cargo test-tokio-uring
+      run: just test-tokio-uring
     - name: "Tests: Monoio"
-      run: cargo test-monoio
+      run: just test-monoio
     - name: "Lint Checks: Tokio-uring"
-      run: cargo lint-tokio-uring
+      run: just lint-tokio-uring
     - name: "Lint Checks: Monoio"
-      run: cargo lint-monoio
+      run: just lint-monoio
     - name: "Formatting Checks"
       run: cargo fmt --check

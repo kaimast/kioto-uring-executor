@@ -1,4 +1,5 @@
 UNRELEASED (0.3):
+    - Add monoio backend (enabled by default)
     - Added join handles
 
 0.2:
