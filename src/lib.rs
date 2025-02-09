@@ -1,5 +1,17 @@
 #![feature(trait_alias)]
 
+#[cfg(all(feature = "monoio", feature = "tokio-uring"))]
+compile_error!("Cannot enable monoio and tokio-uring");
+
+#[cfg(not(any(feature = "monoio", feature = "tokio-uring")))]
+compile_error!("Must enable either the 'monoio' or 'tokio-uring' feature");
+
+#[cfg(feature = "monoio")]
+pub use monoio::time;
+
+#[cfg(feature = "tokio-uring")]
+pub use tokio::time;
+
 use std::future::Future;
 
 #[cfg(feature = "macros")]
@@ -13,17 +25,31 @@ pub use spawn::*;
 
 use runtime::ACTIVE_RUNTIME;
 
+#[cfg(feature = "monoio")]
+fn generate_runtime() -> monoio::Runtime<monoio::time::TimeDriver<monoio::IoUringDriver>> {
+    monoio::RuntimeBuilder::<monoio::IoUringDriver>::new()
+        .enable_timer()
+        .build()
+        .expect("Failed to start monoio")
+}
+
 /// Emulates tokio's block_on call
 ///
 /// This will spawn a new tokio runtime on the current thread
 pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
-    tokio_uring::start(task)
+    cfg_if::cfg_if! {
+        if #[cfg(feature="tokio-uring")] {
+            tokio_uring::start(task)
+        } else {
+            generate_runtime().block_on(task)
+        }
+    }
 }
 
 /// Emulates tokio's block_on call
 ///
 /// This will use an existing exeuctor
-pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + 'static>(task: F) -> O {
+pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + Send + 'static>(task: F) -> O {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").block_on(task))
 }
 

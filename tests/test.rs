@@ -1,7 +1,7 @@
 use kioto_uring_executor as executor;
 
+use executor::time::{sleep, Duration};
 use std::sync::mpsc;
-use tokio::time::{sleep, Duration};
 
 #[test]
 fn block_on() {
@@ -14,9 +14,11 @@ fn block_on() {
 #[test]
 fn runtime_block_on() {
     let runtime = executor::Runtime::new();
-    runtime.block_on(async {
-        sleep(Duration::from_millis(10)).await;
-        println!("Hello world");
+    runtime.block_on_with(|| {
+        Box::pin(async {
+            sleep(Duration::from_millis(10)).await;
+            println!("Hello world");
+        })
     })
 }
 
@@ -25,9 +27,11 @@ fn spawn() {
     let runtime = executor::Runtime::new();
     let (sender, receiver) = mpsc::channel();
 
-    runtime.spawn(async move {
-        sleep(Duration::from_millis(10)).await;
-        let _ = sender.send("Hello world".to_string());
+    runtime.spawn_with(|| {
+        Box::pin(async move {
+            sleep(Duration::from_millis(10)).await;
+            let _ = sender.send("Hello world".to_string());
+        })
     });
 
     println!("{}", receiver.recv().unwrap());
@@ -35,9 +39,11 @@ fn spawn() {
 
 #[kioto_uring_executor::test]
 async fn join() {
-    let hdl = kioto_uring_executor::spawn(async move {
-        sleep(Duration::from_millis(10)).await;
-        "Hello world".to_string()
+    let hdl = kioto_uring_executor::spawn_with(|| {
+        Box::pin(async move {
+            sleep(Duration::from_millis(10)).await;
+            "Hello world".to_string()
+        })
     });
 
     assert_eq!("Hello world".to_string(), hdl.join().await);
@@ -71,9 +77,11 @@ fn spawn_with() {
 #[kioto_uring_executor::test]
 async fn spawn_ring() {
     let mut ring = kioto_uring_executor::new_spawn_ring();
-    let hdl = ring.spawn(async move {
-        sleep(Duration::from_millis(10)).await;
-        println!("Hello world");
+    let hdl = ring.spawn_with(|| {
+        Box::pin(async move {
+            sleep(Duration::from_millis(10)).await;
+            println!("Hello world");
+        })
     });
 
     hdl.join().await;

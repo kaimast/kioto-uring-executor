@@ -27,7 +27,7 @@ impl SpawnRing {
         self.wrapped
     }
 
-    pub fn spawn<O: Send + Sized, F: Future<Output = O> + 'static>(
+    pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
         &mut self,
         func: F,
     ) -> JoinHandle<O> {
@@ -63,7 +63,9 @@ pub fn new_spawn_ring() -> SpawnRing {
 }
 
 /// Spawns the task on a random thread
-pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(func: F) -> JoinHandle<O> {
+pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
+    func: F,
+) -> JoinHandle<O> {
     spawn_with(|| Box::pin(func))
 }
 
@@ -92,7 +94,7 @@ pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
 }
 
 /// Spawns the task on a specific thread
-pub fn spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+pub fn spawn_at<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
     offset: usize,
     func: F,
 ) -> JoinHandle<O> {

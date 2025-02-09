@@ -19,9 +19,17 @@ jobs:
       with:
          toolchain: nightly
          components: cargo, rustc, clippy, rustfmt
-    - name: "Unit Tests"
-      run: cargo test
-    - name: "Lint Checks"
-      run: cargo clippy --no-default-features -- -D warnings
+    - name: Install Just
+      uses: taiki-e/install-action@v2
+      with:
+        tool: just
+    - name: "Tests: Tokio-uring"
+      run: just test-tokio-uring
+    - name: "Tests: Monoio"
+      run: just test-monoio
+    - name: "Lint Checks: Tokio-uring"
+      run: just lint-tokio-uring
+    - name: "Lint Checks: Monoio"
+      run: just lint-monoio
     - name: "Formatting Checks"
       run: cargo fmt --check

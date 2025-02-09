@@ -5,6 +5,8 @@ use std::pin::Pin;
 use std::sync::mpsc as std_mpsc;
 use std::sync::Arc;
 
+use cfg_if::cfg_if;
+
 use parking_lot::RwLock;
 
 use rand::Rng;
@@ -17,15 +19,13 @@ use crate::spawn::SpawnRing;
 /// Once it arrives at the other thread, the resulting
 /// future can be not send
 pub trait FutureWith<O: Send + 'static> =
-    FnOnce() -> Pin<Box<dyn Future<Output = O> + 'static>> + 'static;
+    (FnOnce() -> Pin<Box<dyn Future<Output = O> + 'static>>) + Send + 'static;
 
-trait Generator = FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>>;
+trait Generator = (FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>>) + Send;
 
 pub struct Task {
     generator: Box<dyn Generator>,
 }
-
-unsafe impl Send for Task {}
 
 type TaskSender = mpsc::UnboundedSender<Task>;
 
@@ -80,12 +80,24 @@ impl Runtime {
                 ACTIVE_RUNTIME.with_borrow_mut(|r| {
                     *r = Some(inner);
                 });
-                tokio_uring::start(async {
-                    while let Some(task) = receiver.recv().await {
-                        let future = (task.generator)();
-                        tokio_uring::spawn(future);
+
+                cfg_if! {
+                    if #[cfg(feature="tokio-uring")] {
+                        tokio_uring::start(async {
+                            while let Some(task) = receiver.recv().await {
+                                let future = (task.generator)();
+                                tokio_uring::spawn(future);
+                            }
+                        });
+                    } else {
+                        crate::generate_runtime().block_on(async {
+                            while let Some(task) = receiver.recv().await {
+                                let future = (task.generator)();
+                                monoio::spawn(future);
+                            }
+                        });
                     }
-                });
+                }
             });
         }
 
@@ -93,8 +105,16 @@ impl Runtime {
     }
 
     /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on<T: Send + 'static, F: Future<Output = T> + 'static>(&self, task: F) -> T {
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> T {
         self.inner.block_on(task)
+    }
+
+    /// Blocks the current thread until the runtime has finished th task
+    pub fn block_on_with<T: Send + 'static, F: FutureWith<T> + 'static>(&self, fut: F) -> T {
+        self.inner.block_on_with(fut)
     }
 
     /// Spawns the task on a random thread
@@ -172,7 +192,7 @@ impl RuntimeInner {
             panic!("Executor not set up yet!");
         }
 
-        let idx = rand::thread_rng().gen_range(0..senders.len());
+        let idx = rand::rng().random_range(0..senders.len());
         if let Err(err) = senders[idx].send(task) {
             panic!("Failed to spawn task: {err}");
         }
@@ -206,15 +226,24 @@ impl RuntimeInner {
     ) -> JoinHandle<O> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
 
-        tokio_uring::spawn(async move {
-            let result = func.await;
-            let _ = sender.send(result);
-        });
+        cfg_if! {
+            if #[cfg(feature="tokio-uring")] {
+                tokio_uring::spawn(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                });
+            } else {
+                monoio::spawn(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                });
+            }
+        }
 
         JoinHandle { receiver }
     }
 
-    pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + 'static>(
+    pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
         &self,
         func: F,
     ) -> JoinHandle<O> {
@@ -222,7 +251,7 @@ impl RuntimeInner {
     }
 
     /// Spawns the task on a specific thread
-    pub fn spawn_at<O: Send + 'static, F: Future<Output = O> + 'static>(
+    pub fn spawn_at<O: Send + 'static, F: Future<Output = O> + Send + 'static>(
         &self,
         offset: usize,
         func: F,
@@ -231,13 +260,42 @@ impl RuntimeInner {
     }
 
     /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on<T: Send + 'static, F: Future<Output = T> + 'static>(&self, task: F) -> T {
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> T {
         let (sender, receiver) = std_mpsc::channel();
 
         self.spawn(async move {
             let res = task.await;
             sender.send(res).expect("Notification failed");
         });
+
+        receiver.recv().expect("Failed to wait for task")
+    }
+
+    pub fn block_on_with<O: Send + Sized + 'static, F: FutureWith<O>>(&self, func: F) -> O {
+        let (sender, receiver) = std_mpsc::channel();
+
+        let task = Task {
+            generator: Box::new(move || {
+                let func = func();
+                Box::pin(async move {
+                    let result = func.await;
+                    let _ = sender.send(result);
+                })
+            }),
+        };
+
+        let senders = self.task_senders.read();
+        if senders.is_empty() {
+            panic!("Executor not set up yet!");
+        }
+
+        let idx = rand::rng().random_range(0..senders.len());
+        if let Err(err) = senders[idx].send(task) {
+            panic!("Failed to spawn task: {err}");
+        }
 
         receiver.recv().expect("Failed to wait for task")
     }
