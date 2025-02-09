@@ -63,7 +63,9 @@ pub fn new_spawn_ring() -> SpawnRing {
 }
 
 /// Spawns the task on a random thread
-pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(func: F) -> JoinHandle<O> {
+pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
+    func: F,
+) -> JoinHandle<O> {
     spawn_with(|| Box::pin(func))
 }
 

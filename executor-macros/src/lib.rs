@@ -31,9 +31,11 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     let tokio_expr = quote! {
         let runtime = kioto_uring_executor::Runtime::new();
-        runtime.block_on(async {
-                    #body
+        runtime.block_on_with(|| {
+            Box::pin(async {
+                #body
             })
+        })
     };
 
     input.block = syn::parse2(quote! {
@@ -74,9 +76,11 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     let tokio_expr = quote! {
         let runtime = kioto_uring_executor::Runtime::new();
-        runtime.block_on(async {
+        runtime.block_on_with(|| {
+            async {
                     #body
-            })
+            }
+        })
     };
 
     input.block = syn::parse2(quote! {
