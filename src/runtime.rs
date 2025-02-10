@@ -15,6 +15,12 @@ use tokio::sync::mpsc;
 
 use crate::spawn::SpawnRing;
 
+#[cfg(feature = "tokio-uring")]
+use tokio::task::JoinHandle as InnerJoinHandle;
+
+#[cfg(feature = "monoio")]
+use monoio::task::JoinHandle as InnerJoinHandle;
+
 /// A wrapper for a future that can be send to another thread
 /// Once it arrives at the other thread, the resulting
 /// future can be not send
@@ -37,7 +43,31 @@ pub struct JoinHandle<O: Sized + Send + 'static> {
     receiver: tokio::sync::oneshot::Receiver<O>,
 }
 
-impl<O: Send> JoinHandle<O> {
+/// A local join handle is different from a cross-thread
+/// JoinHandle in that it is not Send and can be aborted
+pub struct LocalJoinHandle<O: Sized + 'static> {
+    inner: InnerJoinHandle<O>,
+}
+
+impl<O: Sized> LocalJoinHandle<O> {
+    #[cfg(feature = "tokio-uring")]
+    pub fn abort(self) {
+        self.inner.abort()
+    }
+
+    pub async fn join(self) -> O {
+        #[cfg(feature = "tokio-uring")]
+        {
+            self.inner.await.unwrap()
+        }
+        #[cfg(feature = "monoio")]
+        {
+            self.inner.await
+        }
+    }
+}
+
+impl<O: Sized + Send> JoinHandle<O> {
     /// Block until the associated task finished
     pub async fn join(self) -> O {
         self.receiver.await.unwrap()
@@ -126,10 +156,10 @@ impl Runtime {
     }
 
     /// Spawns the task on the current thread
-    pub fn spawn_local<O: Send + Sized, F: Future<Output = O> + 'static>(
+    pub fn spawn_local<O: Sized, F: Future<Output = O> + 'static>(
         &self,
         func: F,
-    ) -> JoinHandle<O> {
+    ) -> LocalJoinHandle<O> {
         self.inner.spawn_local(func)
     }
 
@@ -220,27 +250,19 @@ impl RuntimeInner {
         hdl
     }
 
-    pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+    pub fn spawn_local<O: Sized + 'static, F: Future<Output = O> + 'static>(
         &self,
         func: F,
-    ) -> JoinHandle<O> {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-
+    ) -> LocalJoinHandle<O> {
         cfg_if! {
             if #[cfg(feature="tokio-uring")] {
-                tokio_uring::spawn(async move {
-                    let result = func.await;
-                    let _ = sender.send(result);
-                });
+                let inner = tokio_uring::spawn(func);
             } else {
-                monoio::spawn(async move {
-                    let result = func.await;
-                    let _ = sender.send(result);
-                });
+                let inner = monoio::spawn(func);
             }
         }
 
-        JoinHandle { receiver }
+        LocalJoinHandle { inner }
     }
 
     pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
