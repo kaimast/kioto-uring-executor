@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use crate::runtime::{FutureWith, JoinHandle, RuntimeInner, ACTIVE_RUNTIME};
+use crate::runtime::{FutureWith, JoinHandle, LocalJoinHandle, RuntimeInner, ACTIVE_RUNTIME};
 
 /// A spawn ring allows to load balance tasks across all
 /// worker threads in a round-robin fashion
@@ -72,7 +72,7 @@ pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
 /// Spawns the task on the current thread
 pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
     func: F,
-) -> JoinHandle<O> {
+) -> LocalJoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_local(func))
 }
 
