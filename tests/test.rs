@@ -12,6 +12,18 @@ fn block_on() {
 }
 
 #[test]
+fn block_on_spawn() {
+    executor::block_on(async {
+        let fut = executor::spawn_local(async {
+            sleep(Duration::from_millis(10)).await;
+            println!("Hello world");
+        });
+
+        fut.join().await
+    })
+}
+
+#[test]
 fn runtime_block_on() {
     let runtime = executor::Runtime::new();
     runtime.block_on_with(|| {

@@ -17,9 +17,11 @@ use crate::spawn::SpawnRing;
 
 #[cfg(feature = "tokio-uring")]
 use tokio::task::JoinHandle as InnerJoinHandle;
+#[cfg(feature = "tokio-uring")]
+use tokio_uring::spawn as backend_spawn;
 
 #[cfg(feature = "monoio")]
-use monoio::task::JoinHandle as InnerJoinHandle;
+use monoio::{spawn as backend_spawn, task::JoinHandle as InnerJoinHandle};
 
 /// A wrapper for a future that can be send to another thread
 /// Once it arrives at the other thread, the resulting
@@ -89,6 +91,47 @@ impl Default for Runtime {
 }
 
 impl Runtime {
+    pub(crate) fn block_on_current_thread<T: 'static, F: Future<Output = T> + 'static>(
+        fut: F,
+    ) -> T {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
+        let inner = Arc::new(RuntimeInner {
+            task_senders: RwLock::new(vec![sender]),
+        });
+
+        Self::wrap_in_runtime(inner, async move {
+            // The future might spawn other tasks;
+            // wait for them here
+            crate::spawn_local(async move {
+                while let Some(task) = receiver.recv().await {
+                    let future = (task.generator)();
+                    backend_spawn(future);
+                }
+            });
+
+            fut.await
+        })()
+    }
+
+    fn wrap_in_runtime<O>(
+        inner: Arc<RuntimeInner>,
+        fut: impl Future<Output = O>,
+    ) -> impl FnOnce() -> O {
+        move || {
+            ACTIVE_RUNTIME.with_borrow_mut(|r| {
+                *r = Some(inner);
+            });
+
+            cfg_if! {
+                if #[cfg(feature="tokio-uring")] {
+                    tokio_uring::start(fut)
+                } else {
+                    crate::generate_runtime().block_on(fut)
+                }
+            }
+        }
+    }
+
     pub fn new() -> Self {
         let thread_count = std::thread::available_parallelism().unwrap();
         Self::new_with_threads(thread_count)
@@ -104,31 +147,13 @@ impl Runtime {
         for _ in 0..num_os_threads {
             let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
             inner.task_senders.write().push(sender);
-            let inner = inner.clone();
 
-            std::thread::spawn(move || {
-                ACTIVE_RUNTIME.with_borrow_mut(|r| {
-                    *r = Some(inner);
-                });
-
-                cfg_if! {
-                    if #[cfg(feature="tokio-uring")] {
-                        tokio_uring::start(async {
-                            while let Some(task) = receiver.recv().await {
-                                let future = (task.generator)();
-                                tokio_uring::spawn(future);
-                            }
-                        });
-                    } else {
-                        crate::generate_runtime().block_on(async {
-                            while let Some(task) = receiver.recv().await {
-                                let future = (task.generator)();
-                                monoio::spawn(future);
-                            }
-                        });
-                    }
+            std::thread::spawn(Self::wrap_in_runtime(inner.clone(), async move {
+                while let Some(task) = receiver.recv().await {
+                    let future = (task.generator)();
+                    backend_spawn(future);
                 }
-            });
+            }));
         }
 
         Self { inner }

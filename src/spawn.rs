@@ -70,7 +70,7 @@ pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
 }
 
 /// Spawns the task on the current thread
-pub fn spawn_local<O: Send + Sized + 'static, F: Future<Output = O> + 'static>(
+pub fn spawn_local<O: Sized + 'static, F: Future<Output = O> + 'static>(
     func: F,
 ) -> LocalJoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_local(func))

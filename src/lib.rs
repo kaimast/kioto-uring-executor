@@ -38,15 +38,9 @@ fn generate_runtime() -> monoio::Runtime<monoio::time::TimeDriver<monoio::IoUrin
 
 /// Emulates tokio's block_on call
 ///
-/// This will spawn a new tokio runtime on the current thread
+/// This will spawn a new runtime on the current thread
 pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
-    cfg_if::cfg_if! {
-        if #[cfg(feature="tokio-uring")] {
-            tokio_uring::start(task)
-        } else {
-            generate_runtime().block_on(task)
-        }
-    }
+    Runtime::block_on_current_thread(task)
 }
 
 /// Emulates tokio's block_on call
