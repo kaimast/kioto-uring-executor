@@ -77,9 +77,9 @@ pub fn main(_args: TokenStream, item: TokenStream) -> TokenStream {
     let tokio_expr = quote! {
         let runtime = kioto_uring_executor::Runtime::new();
         runtime.block_on_with(|| {
-            async {
-                    #body
-            }
+            Box::pin(async {
+                #body
+            })
         })
     };
 
