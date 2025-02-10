@@ -21,7 +21,7 @@ use std::future::Future;
 pub use kioto_uring_executor_macros::{main, test};
 
 mod runtime;
-pub use runtime::{FutureWith, JoinHandle, Runtime};
+pub use runtime::{FutureWith, JoinHandle, LocalJoinHandle, Runtime};
 
 mod spawn;
 pub use spawn::*;
