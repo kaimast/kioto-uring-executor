@@ -7,7 +7,10 @@ compile_error!("Cannot enable monoio and tokio-uring");
 compile_error!("Must enable either the 'monoio' or 'tokio-uring' feature");
 
 #[cfg(feature = "monoio")]
-pub use monoio::time;
+pub use monoio::{net, time};
+
+#[cfg(feature = "tokio-uring")]
+pub use tokio_uring::net;
 
 #[cfg(feature = "tokio-uring")]
 pub use tokio::time;

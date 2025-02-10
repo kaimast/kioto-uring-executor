@@ -13,3 +13,7 @@ lint-tokio-uring:
 
 lint-monoio:
     cargo clippy --no-default-features --features=macros,monoio
+
+fix-formatting:
+    cargo fmt
+    cd executor-macros && cargo fmt
