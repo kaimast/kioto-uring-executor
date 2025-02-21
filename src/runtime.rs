@@ -82,6 +82,7 @@ pub(super) struct RuntimeInner {
 
 pub struct Runtime {
     inner: Arc<RuntimeInner>,
+    threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl Default for Runtime {
@@ -144,19 +145,23 @@ impl Runtime {
             task_senders: Default::default(),
         });
 
-        for _ in 0..num_os_threads {
-            let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
-            inner.task_senders.write().push(sender);
+        let threads = (0..num_os_threads)
+            .map(|idx| {
+                let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
+                inner.task_senders.write().push(sender);
 
-            std::thread::spawn(Self::wrap_in_runtime(inner.clone(), async move {
-                while let Some(task) = receiver.recv().await {
-                    let future = (task.generator)();
-                    backend_spawn(future);
-                }
-            }));
-        }
+                std::thread::spawn(Self::wrap_in_runtime(inner.clone(), async move {
+                    log::debug!("Worker threads #{idx} started");
+                    while let Some(task) = receiver.recv().await {
+                        let future = (task.generator)();
+                        backend_spawn(future);
+                    }
+                    log::debug!("Worker thread #{idx} done");
+                }))
+            })
+            .collect();
 
-        Self { inner }
+        Self { inner, threads }
     }
 
     /// Blocks the current thread until the runtime has finished th task
@@ -214,6 +219,10 @@ impl Runtime {
 impl Drop for Runtime {
     fn drop(&mut self) {
         *self.inner.task_senders.write() = vec![];
+
+        for t in self.threads.drain(..) {
+            t.join().expect("Failed to join worker thread");
+        }
     }
 }
 
