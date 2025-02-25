@@ -125,11 +125,17 @@ impl Runtime {
 
             cfg_if! {
                 if #[cfg(feature="tokio-uring")] {
-                    tokio_uring::start(fut)
+                    let output = tokio_uring::start(fut);
                 } else {
-                    crate::generate_runtime().block_on(fut)
+                    let output = crate::generate_runtime().block_on(fut);
                 }
             }
+
+            ACTIVE_RUNTIME.with_borrow_mut(|r| {
+                *r = None;
+            });
+
+            output
         }
     }
 

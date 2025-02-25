@@ -1,20 +1,28 @@
-use kioto_uring_executor as executor;
+use kioto_uring_executor as kioto;
 
-use executor::time::{sleep, Duration};
+use kioto::time::{sleep, Duration};
 use std::sync::mpsc;
 
 #[test]
 fn block_on() {
-    executor::block_on(async {
+    kioto::block_on(async {
         sleep(Duration::from_millis(10)).await;
         println!("Hello world");
     })
 }
 
 #[test]
+fn num_threads() {
+    kioto::block_on_runtime(async {
+        assert!(kioto::get_runtime_thread_count() > 0);
+        println!("Hello world");
+    })
+}
+
+#[test]
 fn block_on_spawn() {
-    executor::block_on(async {
-        let fut = executor::spawn_local(async {
+    kioto::block_on(async {
+        let fut = kioto::spawn_local(async {
             sleep(Duration::from_millis(10)).await;
             println!("Hello world");
         });
@@ -25,7 +33,7 @@ fn block_on_spawn() {
 
 #[test]
 fn runtime_block_on() {
-    let runtime = executor::Runtime::new();
+    let runtime = kioto::Runtime::new();
     runtime.block_on_with(|| {
         Box::pin(async {
             sleep(Duration::from_millis(10)).await;
@@ -36,7 +44,7 @@ fn runtime_block_on() {
 
 #[test]
 fn spawn() {
-    let runtime = executor::Runtime::new();
+    let runtime = kioto::Runtime::new();
     let (sender, receiver) = mpsc::channel();
 
     runtime.spawn_with(|| {
@@ -49,9 +57,9 @@ fn spawn() {
     println!("{}", receiver.recv().unwrap());
 }
 
-#[kioto_uring_executor::test]
+#[kioto::test]
 async fn join() {
-    let hdl = kioto_uring_executor::spawn_with(|| {
+    let hdl = kioto::spawn_with(|| {
         Box::pin(async move {
             sleep(Duration::from_millis(10)).await;
             "Hello world".to_string()
@@ -61,9 +69,9 @@ async fn join() {
     assert_eq!("Hello world".to_string(), hdl.join().await);
 }
 
-#[kioto_uring_executor::test]
+#[kioto::test]
 async fn spawn_local() {
-    let hdl = kioto_uring_executor::spawn_local(async move {
+    let hdl = kioto::spawn_local(async move {
         sleep(Duration::from_millis(10)).await;
         "Hello world".to_string()
     });
@@ -73,7 +81,7 @@ async fn spawn_local() {
 
 #[test]
 fn spawn_with() {
-    let runtime = executor::Runtime::new();
+    let runtime = kioto::Runtime::new();
     let (sender, receiver) = mpsc::channel();
 
     runtime.spawn_with(|| {
@@ -86,9 +94,9 @@ fn spawn_with() {
     assert_eq!("Hello world".to_string(), receiver.recv().unwrap());
 }
 
-#[kioto_uring_executor::test]
+#[kioto::test]
 async fn spawn_ring() {
-    let mut ring = kioto_uring_executor::new_spawn_ring();
+    let mut ring = kioto::new_spawn_ring();
     let hdl = ring.spawn_with(|| {
         Box::pin(async move {
             sleep(Duration::from_millis(10)).await;
@@ -99,7 +107,7 @@ async fn spawn_ring() {
     hdl.join().await;
 }
 
-#[kioto_uring_executor::test]
+#[kioto::test]
 async fn executor_macro() {
     sleep(Duration::from_millis(10)).await;
     println!("Hello world");
