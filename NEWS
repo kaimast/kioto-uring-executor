@@ -1,4 +1,5 @@
 UNRELEASED (0.3):
+    - You can now create handles to runtimes
     - Add monoio backend (enabled by default)
     - Added join handles
 
