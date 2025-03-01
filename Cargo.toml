@@ -25,6 +25,9 @@ features=["sync", "time"]
 version="0.3.0-dev"
 path="./executor-macros"
 
+[dev-dependencies]
+env_logger = "0.11"
+
 [workspace]
 members = ["executor-macros"]
 

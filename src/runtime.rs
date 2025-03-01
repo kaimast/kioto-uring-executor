@@ -80,9 +80,15 @@ pub(super) struct RuntimeInner {
     task_senders: RwLock<Vec<TaskSender>>,
 }
 
+/// The kioto runtime
 pub struct Runtime {
     inner: Arc<RuntimeInner>,
     threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+/// A reference to an existing kioto runtime
+pub struct Handle {
+    pub(super) inner: Arc<RuntimeInner>,
 }
 
 impl Default for Runtime {
@@ -91,10 +97,75 @@ impl Default for Runtime {
     }
 }
 
+impl Handle {
+    /// Blocks the current thread until the runtime has finished th task
+    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        task: F,
+    ) -> T {
+        self.inner.block_on(task)
+    }
+
+    /// Blocks the current thread until the runtime has finished th task
+    pub fn block_on_with<T: Send + 'static, F: FutureWith<T> + 'static>(&self, fut: F) -> T {
+        self.inner.block_on_with(fut)
+    }
+
+    /// Spawns the task on a random thread
+    pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        self.inner.spawn(func)
+    }
+
+    /// Spawns the task on the current thread
+    pub fn spawn_local<O: Sized, F: Future<Output = O> + 'static>(
+        &self,
+        func: F,
+    ) -> LocalJoinHandle<O> {
+        self.inner.spawn_local(func)
+    }
+
+    /// Spawns the task on a random thread
+    ///
+    /// This allows to send some data even if the resulting
+    /// future is not Sync
+    pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(
+        &self,
+        func: F,
+    ) -> JoinHandle<O> {
+        self.inner.spawn_with(func)
+    }
+
+    /// How many worker threads are there?
+    pub fn get_thread_count(&self) -> usize {
+        self.inner.get_thread_count()
+    }
+
+    /// Create a primitive that lets you distribute tasks
+    /// across worker threads in a round-robin fashion
+    pub fn new_spawn_ring(&self) -> SpawnRing {
+        SpawnRing::new(self.inner.clone())
+    }
+}
+
 impl Runtime {
+    pub fn handle(&self) -> Handle {
+        Handle {
+            inner: self.inner.clone(),
+        }
+    }
+
     pub(crate) fn block_on_current_thread<T: 'static, F: Future<Output = T> + 'static>(
         fut: F,
     ) -> T {
+        ACTIVE_RUNTIME.with_borrow(|r| {
+            if r.is_some() {
+                panic!("You cannot block on the current thread from within a runtime");
+            }
+        });
+
         let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
         let inner = Arc::new(RuntimeInner {
             task_senders: RwLock::new(vec![sender]),
@@ -119,17 +190,25 @@ impl Runtime {
         fut: impl Future<Output = O>,
     ) -> impl FnOnce() -> O {
         move || {
+            log::trace!("kioto runtime thread started");
             ACTIVE_RUNTIME.with_borrow_mut(|r| {
                 *r = Some(inner);
             });
 
             cfg_if! {
                 if #[cfg(feature="tokio-uring")] {
-                    tokio_uring::start(fut)
+                    let output = tokio_uring::start(fut);
                 } else {
-                    crate::generate_runtime().block_on(fut)
+                    let output = crate::generate_runtime().block_on(fut);
                 }
             }
+
+            ACTIVE_RUNTIME.with_borrow_mut(|r| {
+                *r = None;
+            });
+
+            log::trace!("kioto runtime thread finished");
+            output
         }
     }
 

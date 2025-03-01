@@ -43,13 +43,24 @@ pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
     Runtime::block_on_current_thread(task)
 }
 
+/// Get a handle to the currently active runtime (if any)
+pub fn runtime_handle() -> Option<runtime::Handle> {
+    ACTIVE_RUNTIME.with_borrow(|r| {
+        r.as_ref().map(|inner| runtime::Handle {
+            inner: inner.clone(),
+        })
+    })
+}
+
 /// Emulates tokio's block_on call
 ///
 /// This will use an existing exeuctor
 pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + Send + 'static>(task: F) -> O {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").block_on(task))
+    runtime_handle().expect("No active runtime").block_on(task)
 }
 
 pub fn get_runtime_thread_count() -> usize {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").get_thread_count())
+    runtime_handle()
+        .expect("No active runtime")
+        .get_thread_count()
 }
