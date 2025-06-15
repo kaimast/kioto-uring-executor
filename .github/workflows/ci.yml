@@ -25,11 +25,16 @@ jobs:
         tool: just
     - name: "Tests: Tokio-uring"
       run: just test-tokio-uring
+      timeout-minutes: 10
     - name: "Tests: Monoio"
       run: just test-monoio
+      timeout-minutes: 10
     - name: "Lint Checks: Tokio-uring"
       run: just lint-tokio-uring
+      timeout-minutes: 5
     - name: "Lint Checks: Monoio"
+      timeout-minutes: 5 
       run: just lint-monoio
     - name: "Formatting Checks"
+      timeout-minutes: 5
       run: just check-formatting
