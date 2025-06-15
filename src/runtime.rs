@@ -121,7 +121,11 @@ impl Runtime {
     }
 
     pub fn new() -> Self {
-        let thread_count = std::thread::available_parallelism().unwrap();
+        // Spawn one thread per core, but at least four
+        let min_threads = NonZeroUsize::new(4).unwrap();
+        let thread_count = std::thread::available_parallelism()
+            .unwrap()
+            .max(min_threads);
         Self::new_with_threads(thread_count)
     }
 

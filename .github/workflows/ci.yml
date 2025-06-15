@@ -24,10 +24,10 @@ jobs:
       with:
         tool: just
     - name: "Tests: Tokio-uring"
-      run: just test-tokio-uring
+      run: RUST_LOG=debug RUST_BACKTRACE=1 just test-tokio-uring
       timeout-minutes: 10
     - name: "Tests: Monoio"
-      run: just test-monoio
+      run: RUST_LOG=debug RUST_BACKTRACE=1 just test-monoio
       timeout-minutes: 10
     - name: "Lint Checks: Tokio-uring"
       run: just lint-tokio-uring
