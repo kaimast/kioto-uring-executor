@@ -35,7 +35,7 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
             Box::pin(async {
                 #body
             })
-        })
+        }).expect("Blocked task failed");
     };
 
     input.block = syn::parse2(quote! {

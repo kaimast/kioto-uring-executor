@@ -17,7 +17,7 @@ jobs:
     - name: Install rustc and clippy nightly
       uses: dtolnay/rust-toolchain@stable
       with:
-         toolchain: nightly
+         toolchain: nightly-2025-06-13
          components: cargo, rustc, clippy, rustfmt
     - name: Install Just
       uses: taiki-e/install-action@v2
@@ -32,4 +32,4 @@ jobs:
     - name: "Lint Checks: Monoio"
       run: just lint-monoio
     - name: "Formatting Checks"
-      run: cargo fmt --check
+      run: just check-formatting

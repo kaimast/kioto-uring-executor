@@ -23,6 +23,9 @@ pub use kioto_uring_executor_macros::{main, test};
 mod runtime;
 pub use runtime::{FutureWith, JoinHandle, LocalJoinHandle, Runtime};
 
+mod error;
+pub use error::*;
+
 mod spawn;
 pub use spawn::*;
 
@@ -45,18 +48,20 @@ pub fn block_on<T: 'static, F: Future<Output = T> + 'static>(task: F) -> T {
 
 /// Get a handle to the currently active runtime (if any)
 pub fn runtime_handle() -> Option<runtime::Handle> {
-    ACTIVE_RUNTIME.with_borrow(|r| {
-        r.as_ref().map(|inner| runtime::Handle {
-            inner: inner.clone(),
-        })
-    })
+    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().map(|inner| runtime::Handle::new(inner.clone())))
 }
 
 /// Emulates tokio's block_on call
 ///
 /// This will use an existing exeuctor
-pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + Send + 'static>(task: F) -> O {
-    runtime_handle().expect("No active runtime").block_on(task)
+pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + Send + 'static>(
+    task: F,
+) -> Result<O> {
+    let Some(handle) = runtime_handle() else {
+        return Err(Error::NoRuntime);
+    };
+
+    handle.block_on(task)
 }
 
 pub fn get_runtime_thread_count() -> usize {

@@ -73,12 +73,24 @@ pub fn spawn<O: Send + Sized + 'static, F: Future<Output = O> + Send + 'static>(
 pub fn spawn_local<O: Sized + 'static, F: Future<Output = O> + 'static>(
     func: F,
 ) -> LocalJoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_local(func))
+    ACTIVE_RUNTIME.with_borrow(|r| {
+        let Some(hdl) = r.as_ref() else {
+            panic!("No active kioto runtime!");
+        };
+
+        hdl.spawn_local(func)
+    })
 }
 
 /// Spawns the task on a random thread (non-send version)
 pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(func: F) -> JoinHandle<O> {
-    ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().expect("No active runtime").spawn_with(func))
+    ACTIVE_RUNTIME.with_borrow(|r| {
+        let Some(hdl) = r.as_ref() else {
+            panic!("No active kioto runtime");
+        };
+
+        hdl.spawn_with(func)
+    })
 }
 
 /// Spawns the task on the given thread index (non-send version)
@@ -87,9 +99,11 @@ pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
     func: F,
 ) -> JoinHandle<O> {
     ACTIVE_RUNTIME.with_borrow(|r| {
-        r.as_ref()
-            .expect("No active runtime")
-            .spawn_with_at(offset, func)
+        let Some(hdl) = r.as_ref() else {
+            panic!("No active kioto runtime");
+        };
+
+        hdl.spawn_with_at(offset, func)
     })
 }
 

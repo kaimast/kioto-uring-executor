@@ -35,6 +35,7 @@ async fn num_threads_in_runtime() {
         assert!(kioto::get_runtime_thread_count() > 0);
         println!("Hello world");
     })
+    .unwrap();
 }
 
 #[test]
@@ -47,7 +48,7 @@ fn block_on_spawn() {
             println!("Hello world");
         });
 
-        fut.join().await
+        fut.join().await.unwrap();
     })
 }
 
@@ -56,12 +57,14 @@ fn runtime_block_on() {
     let _ = env_logger::builder().is_test(true).try_init();
 
     let runtime = kioto::Runtime::new();
-    runtime.block_on_with(|| {
-        Box::pin(async {
-            sleep(Duration::from_millis(10)).await;
-            println!("Hello world");
+    runtime
+        .block_on_with(|| {
+            Box::pin(async {
+                sleep(Duration::from_millis(10)).await;
+                println!("Hello world");
+            })
         })
-    })
+        .unwrap();
 }
 
 #[test]
@@ -92,7 +95,7 @@ async fn join() {
         })
     });
 
-    assert_eq!("Hello world".to_string(), hdl.join().await);
+    assert_eq!("Hello world".to_string(), hdl.join().await.unwrap());
 }
 
 #[kioto::test]
@@ -104,7 +107,7 @@ async fn spawn_local() {
         "Hello world".to_string()
     });
 
-    assert_eq!("Hello world".to_string(), hdl.join().await);
+    assert_eq!("Hello world".to_string(), hdl.join().await.unwrap());
 }
 
 #[test]
@@ -136,7 +139,7 @@ async fn spawn_ring() {
         })
     });
 
-    hdl.join().await;
+    hdl.join().await.unwrap();
 }
 
 #[kioto::test]
