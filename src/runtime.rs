@@ -120,8 +120,9 @@ impl Runtime {
         }
     }
 
+    /// Spawns a runtime with one thread per core.
+    /// If there a less then four cores, it will still spawn at least four threads.
     pub fn new() -> Self {
-        // Spawn one thread per core, but at least four
         let min_threads = NonZeroUsize::new(4).unwrap();
         let thread_count = std::thread::available_parallelism()
             .unwrap()
@@ -131,21 +132,29 @@ impl Runtime {
 
     pub fn new_with_threads(num_os_threads: NonZeroUsize) -> Self {
         let num_os_threads = num_os_threads.get();
-        log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
+        log::trace!("Spawning {num_os_threads} worker threads");
 
-        let inner = Arc::new(RuntimeInner::new(vec![]));
+        let mut senders = vec![];
+        let mut receivers = vec![];
+        for _ in 0..num_os_threads {
+            let (sender, receiver) = create_task_channel();
+            senders.push(sender);
+            receivers.push(receiver);
+        }
 
-        let threads = (0..num_os_threads)
-            .map(|idx| {
-                let (sender, receiver) = create_task_channel();
-                inner.task_senders.write().push(sender);
+        let inner = Arc::new(RuntimeInner::new(senders));
 
+        let threads = receivers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, receiver)| {
                 std::thread::spawn(Self::wrap_in_runtime(inner.clone(), async move {
                     RuntimeInner::worker_thread(idx, receiver).await
                 }))
             })
             .collect();
 
+        log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
         Self { inner, threads }
     }
 
@@ -241,12 +250,12 @@ impl RuntimeInner {
 
     /// The loop for each worker thread
     async fn worker_thread(idx: usize, mut receiver: TaskReceiver) {
-        log::debug!("Worker threads #{idx} started");
+        log::debug!("Worker thread #{idx} started");
         while let Some(Some(task)) = receiver.recv().await {
             let future = (task.generator)();
             backend_spawn(future);
         }
-        log::debug!("Worker thread #{idx} done");
+        log::debug!("Worker thread #{idx} finished");
     }
 
     fn wrap_function<O: Send + 'static, F: FutureWith<O>>(func: F) -> (Task, JoinHandle<O>) {
@@ -279,6 +288,8 @@ impl RuntimeInner {
         }
 
         let idx = rand::rng().random_range(0..senders.len());
+        log::trace!("Spawning new task on worker thread #{idx}");
+
         if let Err(err) = senders[idx].send(Some(task)) {
             if *self.state.read() == State::ShuttingDown {
                 JoinHandle::new_aborted()
@@ -359,6 +370,7 @@ impl RuntimeInner {
             sender.send(res).expect("Notification failed");
         });
 
+        log::trace!("Waiting for block_on call to complete");
         receiver.recv().map_err(|err| Error::TaskFailed {
             message: err.to_string(),
         })
@@ -380,14 +392,17 @@ impl RuntimeInner {
             }),
         };
 
-        let senders = self.task_senders.read();
-        if senders.is_empty() {
-            panic!("Executor not set up yet!");
-        }
+        // Drop read lock after sending task
+        {
+            let senders = self.task_senders.read();
+            if senders.is_empty() {
+                panic!("Executor not set up yet!");
+            }
 
-        let idx = rand::rng().random_range(0..senders.len());
-        if let Err(err) = senders[idx].send(Some(task)) {
-            panic!("Failed to spawn task: {err}");
+            let idx = rand::rng().random_range(0..senders.len());
+            if let Err(err) = senders[idx].send(Some(task)) {
+                panic!("Failed to spawn task: {err}");
+            }
         }
 
         receiver.recv().map_err(|err| Error::TaskFailed {

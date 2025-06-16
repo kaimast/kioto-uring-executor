@@ -30,11 +30,13 @@ async fn num_threads_in_runtime() {
     // make sure ACTIVE_RUNTIME is set correctly
     assert!(kioto::get_runtime_thread_count() > 0);
 
-    kioto::block_on_runtime(async {
+    kioto::spawn(async {
         // ensure ACTIVE_RUNTIME is still set
         assert!(kioto::get_runtime_thread_count() > 0);
         println!("Hello world");
     })
+    .join()
+    .await
     .unwrap();
 }
 

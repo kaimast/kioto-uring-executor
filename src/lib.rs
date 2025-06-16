@@ -51,19 +51,6 @@ pub fn runtime_handle() -> Option<runtime::Handle> {
     ACTIVE_RUNTIME.with_borrow(|r| r.as_ref().map(|inner| runtime::Handle::new(inner.clone())))
 }
 
-/// Emulates tokio's block_on call
-///
-/// This will use an existing exeuctor
-pub fn block_on_runtime<O: Send + 'static, F: Future<Output = O> + Send + 'static>(
-    task: F,
-) -> Result<O> {
-    let Some(handle) = runtime_handle() else {
-        return Err(Error::NoRuntime);
-    };
-
-    handle.block_on(task)
-}
-
 pub fn get_runtime_thread_count() -> usize {
     runtime_handle()
         .expect("No active runtime")
