@@ -11,17 +11,23 @@ use parking_lot::RwLock;
 
 use rand::Rng;
 
-use tokio::sync::mpsc;
-
+use crate::error::Error;
 use crate::spawn::SpawnRing;
 
-#[cfg(feature = "tokio-uring")]
-use tokio::task::JoinHandle as InnerJoinHandle;
+mod task;
+use task::{create_task_channel, Task, TaskReceiver, TaskSender};
+
+mod handle;
+pub use handle::Handle;
+
+mod join;
+pub use join::{JoinHandle, LocalJoinHandle};
+
 #[cfg(feature = "tokio-uring")]
 use tokio_uring::spawn as backend_spawn;
 
 #[cfg(feature = "monoio")]
-use monoio::{spawn as backend_spawn, task::JoinHandle as InnerJoinHandle};
+use monoio::spawn as backend_spawn;
 
 /// A wrapper for a future that can be send to another thread
 /// Once it arrives at the other thread, the resulting
@@ -29,54 +35,18 @@ use monoio::{spawn as backend_spawn, task::JoinHandle as InnerJoinHandle};
 pub trait FutureWith<O: Send + 'static> =
     (FnOnce() -> Pin<Box<dyn Future<Output = O> + 'static>>) + Send + 'static;
 
-trait Generator = (FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>>) + Send;
-
-pub struct Task {
-    generator: Box<dyn Generator>,
-}
-
-type TaskSender = mpsc::UnboundedSender<Task>;
-
 thread_local! {
     pub(super) static ACTIVE_RUNTIME: RefCell<Option<Arc<RuntimeInner>>> = const { RefCell::new(None) };
 }
 
-pub struct JoinHandle<O: Sized + Send + 'static> {
-    receiver: tokio::sync::oneshot::Receiver<O>,
-}
-
-/// A local join handle is different from a cross-thread
-/// JoinHandle in that it is not Send and can be aborted
-pub struct LocalJoinHandle<O: Sized + 'static> {
-    inner: InnerJoinHandle<O>,
-}
-
-impl<O: Sized> LocalJoinHandle<O> {
-    #[cfg(feature = "tokio-uring")]
-    pub fn abort(self) {
-        self.inner.abort()
-    }
-
-    pub async fn join(self) -> O {
-        #[cfg(feature = "tokio-uring")]
-        {
-            self.inner.await.unwrap()
-        }
-        #[cfg(feature = "monoio")]
-        {
-            self.inner.await
-        }
-    }
-}
-
-impl<O: Sized + Send> JoinHandle<O> {
-    /// Block until the associated task finished
-    pub async fn join(self) -> O {
-        self.receiver.await.unwrap()
-    }
+#[derive(PartialEq, Eq)]
+enum State {
+    Running,
+    ShuttingDown,
 }
 
 pub(super) struct RuntimeInner {
+    state: RwLock<State>,
     task_senders: RwLock<Vec<TaskSender>>,
 }
 
@@ -86,75 +56,15 @@ pub struct Runtime {
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
-/// A reference to an existing kioto runtime
-pub struct Handle {
-    pub(super) inner: Arc<RuntimeInner>,
-}
-
 impl Default for Runtime {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Handle {
-    /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
-        &self,
-        task: F,
-    ) -> T {
-        self.inner.block_on(task)
-    }
-
-    /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on_with<T: Send + 'static, F: FutureWith<T> + 'static>(&self, fut: F) -> T {
-        self.inner.block_on_with(fut)
-    }
-
-    /// Spawns the task on a random thread
-    pub fn spawn<O: Send + Sized, F: Future<Output = O> + Send + 'static>(
-        &self,
-        func: F,
-    ) -> JoinHandle<O> {
-        self.inner.spawn(func)
-    }
-
-    /// Spawns the task on the current thread
-    pub fn spawn_local<O: Sized, F: Future<Output = O> + 'static>(
-        &self,
-        func: F,
-    ) -> LocalJoinHandle<O> {
-        self.inner.spawn_local(func)
-    }
-
-    /// Spawns the task on a random thread
-    ///
-    /// This allows to send some data even if the resulting
-    /// future is not Sync
-    pub fn spawn_with<O: Send + Sized + 'static, F: FutureWith<O>>(
-        &self,
-        func: F,
-    ) -> JoinHandle<O> {
-        self.inner.spawn_with(func)
-    }
-
-    /// How many worker threads are there?
-    pub fn get_thread_count(&self) -> usize {
-        self.inner.get_thread_count()
-    }
-
-    /// Create a primitive that lets you distribute tasks
-    /// across worker threads in a round-robin fashion
-    pub fn new_spawn_ring(&self) -> SpawnRing {
-        SpawnRing::new(self.inner.clone())
-    }
-}
-
 impl Runtime {
     pub fn handle(&self) -> Handle {
-        Handle {
-            inner: self.inner.clone(),
-        }
+        Handle::new(self.inner.clone())
     }
 
     pub(crate) fn block_on_current_thread<T: 'static, F: Future<Output = T> + 'static>(
@@ -166,16 +76,14 @@ impl Runtime {
             }
         });
 
-        let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
-        let inner = Arc::new(RuntimeInner {
-            task_senders: RwLock::new(vec![sender]),
-        });
+        let (sender, mut receiver) = create_task_channel();
+        let inner = Arc::new(RuntimeInner::new(vec![sender]));
 
         Self::wrap_in_runtime(inner, async move {
             // The future might spawn other tasks;
             // wait for them here
             crate::spawn_local(async move {
-                while let Some(task) = receiver.recv().await {
+                while let Some(Some(task)) = receiver.recv().await {
                     let future = (task.generator)();
                     backend_spawn(future);
                 }
@@ -212,34 +120,41 @@ impl Runtime {
         }
     }
 
+    /// Spawns a runtime with one thread per core.
+    /// If there a less then four cores, it will still spawn at least four threads.
     pub fn new() -> Self {
-        let thread_count = std::thread::available_parallelism().unwrap();
+        let min_threads = NonZeroUsize::new(4).unwrap();
+        let thread_count = std::thread::available_parallelism()
+            .unwrap()
+            .max(min_threads);
         Self::new_with_threads(thread_count)
     }
 
     pub fn new_with_threads(num_os_threads: NonZeroUsize) -> Self {
         let num_os_threads = num_os_threads.get();
-        log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
-        let inner = Arc::new(RuntimeInner {
-            task_senders: Default::default(),
-        });
+        log::trace!("Spawning {num_os_threads} worker threads");
 
-        let threads = (0..num_os_threads)
-            .map(|idx| {
-                let (sender, mut receiver) = mpsc::unbounded_channel::<Task>();
-                inner.task_senders.write().push(sender);
+        let mut senders = vec![];
+        let mut receivers = vec![];
+        for _ in 0..num_os_threads {
+            let (sender, receiver) = create_task_channel();
+            senders.push(sender);
+            receivers.push(receiver);
+        }
 
+        let inner = Arc::new(RuntimeInner::new(senders));
+
+        let threads = receivers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, receiver)| {
                 std::thread::spawn(Self::wrap_in_runtime(inner.clone(), async move {
-                    log::debug!("Worker threads #{idx} started");
-                    while let Some(task) = receiver.recv().await {
-                        let future = (task.generator)();
-                        backend_spawn(future);
-                    }
-                    log::debug!("Worker thread #{idx} done");
+                    RuntimeInner::worker_thread(idx, receiver).await
                 }))
             })
             .collect();
 
+        log::info!("Initialized tokio runtime with {num_os_threads} worker thread(s)");
         Self { inner, threads }
     }
 
@@ -247,12 +162,15 @@ impl Runtime {
     pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
         &self,
         task: F,
-    ) -> T {
+    ) -> Result<T, Error> {
         self.inner.block_on(task)
     }
 
     /// Blocks the current thread until the runtime has finished th task
-    pub fn block_on_with<T: Send + 'static, F: FutureWith<T> + 'static>(&self, fut: F) -> T {
+    pub fn block_on_with<T: Send + 'static, F: FutureWith<T> + 'static>(
+        &self,
+        fut: F,
+    ) -> Result<T, Error> {
         self.inner.block_on_with(fut)
     }
 
@@ -297,15 +215,49 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
-        *self.inner.task_senders.write() = vec![];
+        log::debug!("Shutting down kioto runtime");
 
+        *self.inner.state.write() = State::ShuttingDown;
+
+        // Tell threads to shut down
+        for sender in self.inner.task_senders.write().iter() {
+            let result = sender.send(None);
+
+            if let Err(err) = result {
+                log::error!("Failed to shut down worker thread gracefully: {err}");
+            }
+        }
+
+        // Wait for threads to shut down before we close the task sender
+        // This ensure no new tasks are spawned during shutdown
         for t in self.threads.drain(..) {
             t.join().expect("Failed to join worker thread");
         }
+
+        log::debug!("All kioto threads terminated");
+
+        *self.inner.task_senders.write() = vec![];
     }
 }
 
 impl RuntimeInner {
+    fn new(task_senders: Vec<TaskSender>) -> Self {
+        Self {
+            state: RwLock::new(State::Running),
+            task_senders: RwLock::new(task_senders),
+        }
+    }
+
+    /// The loop for each worker thread
+    async fn worker_thread(idx: usize, mut receiver: TaskReceiver) {
+        log::debug!("Worker thread #{idx} started");
+        while let Some(Some(task)) = receiver.recv().await {
+            let future = (task.generator)();
+            backend_spawn(future);
+        }
+        log::debug!("Worker thread #{idx} finished");
+    }
+
     fn wrap_function<O: Send + 'static, F: FutureWith<O>>(func: F) -> (Task, JoinHandle<O>) {
         let (sender, receiver) = tokio::sync::oneshot::channel();
 
@@ -319,7 +271,7 @@ impl RuntimeInner {
             }),
         };
 
-        let hdl = JoinHandle { receiver };
+        let hdl = JoinHandle::new(receiver);
 
         (task, hdl)
     }
@@ -336,11 +288,17 @@ impl RuntimeInner {
         }
 
         let idx = rand::rng().random_range(0..senders.len());
-        if let Err(err) = senders[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
+        log::trace!("Spawning new task on worker thread #{idx}");
 
-        hdl
+        if let Err(err) = senders[idx].send(Some(task)) {
+            if *self.state.read() == State::ShuttingDown {
+                JoinHandle::new_aborted()
+            } else {
+                panic!("Failed to spawn task: {err}");
+            }
+        } else {
+            hdl
+        }
     }
 
     pub fn spawn_with_at<O: Send + Sized + 'static, F: FutureWith<O>>(
@@ -352,15 +310,21 @@ impl RuntimeInner {
 
         let senders = self.task_senders.read();
         if senders.is_empty() {
+            // This should never happen. Panic here.
             panic!("Executor not set up yet!");
         }
 
         let idx = offset % senders.len();
-        if let Err(err) = senders[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
+        if let Err(err) = senders[idx].send(Some(task)) {
+            if *self.state.read() == State::ShuttingDown {
+                JoinHandle::new_aborted()
+            } else {
+                // This should also never happen.
+                panic!("Failed to spawn task: {err}");
+            }
+        } else {
+            hdl
         }
-
-        hdl
     }
 
     pub fn spawn_local<O: Sized + 'static, F: Future<Output = O> + 'static>(
@@ -375,7 +339,7 @@ impl RuntimeInner {
             }
         }
 
-        LocalJoinHandle { inner }
+        LocalJoinHandle::new(inner)
     }
 
     pub fn spawn<O: Sized + Send + 'static, F: Future<Output = O> + Send + 'static>(
@@ -398,7 +362,7 @@ impl RuntimeInner {
     pub fn block_on<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
         &self,
         task: F,
-    ) -> T {
+    ) -> Result<T, Error> {
         let (sender, receiver) = std_mpsc::channel();
 
         self.spawn(async move {
@@ -406,10 +370,16 @@ impl RuntimeInner {
             sender.send(res).expect("Notification failed");
         });
 
-        receiver.recv().expect("Failed to wait for task")
+        log::trace!("Waiting for block_on call to complete");
+        receiver.recv().map_err(|err| Error::TaskFailed {
+            message: err.to_string(),
+        })
     }
 
-    pub fn block_on_with<O: Send + Sized + 'static, F: FutureWith<O>>(&self, func: F) -> O {
+    pub fn block_on_with<O: Send + Sized + 'static, F: FutureWith<O>>(
+        &self,
+        func: F,
+    ) -> Result<O, Error> {
         let (sender, receiver) = std_mpsc::channel();
 
         let task = Task {
@@ -422,17 +392,22 @@ impl RuntimeInner {
             }),
         };
 
-        let senders = self.task_senders.read();
-        if senders.is_empty() {
-            panic!("Executor not set up yet!");
+        // Drop read lock after sending task
+        {
+            let senders = self.task_senders.read();
+            if senders.is_empty() {
+                panic!("Executor not set up yet!");
+            }
+
+            let idx = rand::rng().random_range(0..senders.len());
+            if let Err(err) = senders[idx].send(Some(task)) {
+                panic!("Failed to spawn task: {err}");
+            }
         }
 
-        let idx = rand::rng().random_range(0..senders.len());
-        if let Err(err) = senders[idx].send(task) {
-            panic!("Failed to spawn task: {err}");
-        }
-
-        receiver.recv().expect("Failed to wait for task")
+        receiver.recv().map_err(|err| Error::TaskFailed {
+            message: err.to_string(),
+        })
     }
 
     pub fn get_thread_count(&self) -> usize {

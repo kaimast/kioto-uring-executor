@@ -9,11 +9,13 @@ test-monoio:
 lint: lint-tokio-uring lint-monoio
 
 lint-tokio-uring:
-    cargo clippy --no-default-features --features=macros,tokio-uring
+    cargo clippy --no-default-features --features=macros,tokio-uring --workspace
 
 lint-monoio:
-    cargo clippy --no-default-features --features=macros,monoio
+    cargo clippy --no-default-features --features=macros,monoio --workspace
+
+check-formatting:
+    cargo fmt --check --all
 
 fix-formatting:
-    cargo fmt
-    cd executor-macros && cargo fmt
+    cargo fmt --all

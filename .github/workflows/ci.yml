@@ -17,19 +17,24 @@ jobs:
     - name: Install rustc and clippy nightly
       uses: dtolnay/rust-toolchain@stable
       with:
-         toolchain: nightly
+         toolchain: nightly-2025-06-13
          components: cargo, rustc, clippy, rustfmt
     - name: Install Just
       uses: taiki-e/install-action@v2
       with:
         tool: just
     - name: "Tests: Tokio-uring"
-      run: just test-tokio-uring
+      run: RUST_LOG=debug RUST_BACKTRACE=1 just test-tokio-uring
+      timeout-minutes: 10
     - name: "Tests: Monoio"
-      run: just test-monoio
+      run: RUST_LOG=debug RUST_BACKTRACE=1 just test-monoio
+      timeout-minutes: 10
     - name: "Lint Checks: Tokio-uring"
       run: just lint-tokio-uring
+      timeout-minutes: 5
     - name: "Lint Checks: Monoio"
+      timeout-minutes: 5 
       run: just lint-monoio
     - name: "Formatting Checks"
-      run: cargo fmt --check
+      timeout-minutes: 5
+      run: just check-formatting

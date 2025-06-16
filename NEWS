@@ -2,6 +2,8 @@ UNRELEASED (0.3):
     - You can now create handles to runtimes
     - Add monoio backend (enabled by default)
     - Added join handles
+    - Spawn calls now handle shutdowns better
+    - Blocking calls now return `Result<_, runtime::Error>`
 
 0.2:
     - Move to a more object-oriented model with Runtime objects
